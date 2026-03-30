@@ -758,7 +758,7 @@ export default function App() {
         <div style={{ padding: "28px 20px 24px", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <div style={{ width: 32, height: 32, borderRadius: 8, background: C.primary, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>📦</div>
-            <span style={{ color: "#fff", fontWeight: 800, fontSize: 17, letterSpacing: "-0.3px" }}>AssetHub</span>
+            <span style={{ color: "#fff", fontWeight: 800, fontSize: 17, letterSpacing: "-0.3px" }}>DURAE Assets</span>
           </div>
         </div>
         <nav style={{ flex: 1, padding: "12px 10px" }}>
@@ -778,7 +778,7 @@ export default function App() {
           })}
         </nav>
         <div style={{ padding: "16px 20px", borderTop: "1px solid rgba(255,255,255,0.06)" }}>
-          <p style={{ margin: 0, fontSize: 11, color: "rgba(255,255,255,0.2)" }}>AssetHub v1.0.0</p>
+          <p style={{ margin: 0, fontSize: 11, color: "rgba(255,255,255,0.2)" }}>DURAE Assets v1.0.0</p>
         </div>
       </aside>
 
