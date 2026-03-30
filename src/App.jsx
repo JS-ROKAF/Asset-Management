@@ -4,6 +4,7 @@ import {
   BarChart, Bar, XAxis, YAxis, ResponsiveContainer
 } from "recharts";
 import { supabase } from "./supabase";
+import { exportToExcel } from "./exportExcel";
 
 // ── 초기 데이터 ──
 // ── 초기 데이터 ──
@@ -276,7 +277,18 @@ function Dashboard({ assets, members, history }) {
 
   return (
     <main style={{ flex: 1, padding: "36px 40px", overflowY: "auto" }}>
-      <PageHeader title="대시보드" subtitle="전체 현황을 한눈에 확인하세요" />
+      <PageHeader title="대시보드" subtitle="전체 현황을 한눈에 확인하세요"
+        action={
+          <button
+            onClick={() => exportToExcel(assets, members, history)}
+            style={{ background: "#10B981", color: "#fff", border: "none", padding: "10px 20px", borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}
+            onMouseEnter={e => e.currentTarget.style.opacity = "0.85"}
+            onMouseLeave={e => e.currentTarget.style.opacity = "1"}
+          >
+            ⬇ 엑셀 내보내기
+          </button>
+        }
+      />
       <SummaryCards items={[
         { label: "전체 자산", value: assets.length, color: C.primary },
         { label: "사용중", value: assets.filter(a => a.status === "사용중").length, color: "#10B981" },
