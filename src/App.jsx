@@ -7,80 +7,9 @@ import { supabase } from "./supabase";
 import { exportToExcel } from "./exportExcel";
 
 // ── 초기 데이터 ──
-// ── 초기 데이터 ──
-const initialAssets = [
-  { id: "A1001", name: "Dell XPS 15", status: "사용중", user: "박인수", date: "2021-03-10", location: "본사" },
-  { id: "A1002", name: "MacBook Pro 14", status: "사용중", user: "김지연", date: "2021-06-22", location: "본사" },
-  { id: "A1003", name: "iPhone 14 Pro", status: "사용중", user: "이수민", date: "2022-01-15", location: "본사" },
-  { id: "A1004", name: "iPad Air 5", status: "미사용", user: "-", date: "2022-03-08", location: "사무지사" },
-  { id: "A1005", name: "Samsung Galaxy S23", status: "사용중", user: "최준혁", date: "2022-05-20", location: "본사" },
-  { id: "A1006", name: "LG 울트라기어 모니터", status: "사용중", user: "정다은", date: "2021-09-14", location: "본사" },
-  { id: "A1007", name: "Dell U2722D 모니터", status: "미사용", user: "-", date: "2022-07-01", location: "창고" },
-  { id: "A1008", name: "Apple Magic Keyboard", status: "사용중", user: "박인수", date: "2021-03-10", location: "본사" },
-  { id: "A1009", name: "Logitech MX Master 3", status: "수리중", user: "김지연", date: "2021-06-22", location: "본사" },
-  { id: "A1010", name: "Sony WH-1000XM5", status: "사용중", user: "이수민", date: "2022-08-30", location: "본사" },
-  { id: "A1011", name: "MacBook Air M2", status: "사용중", user: "한지호", date: "2022-10-05", location: "사무지사" },
-  { id: "A1012", name: "iPad Pro 12.9", status: "수리중", user: "오세영", date: "2021-11-18", location: "본사" },
-  { id: "A1013", name: "Microsoft Surface Pro 9", status: "미사용", user: "-", date: "2023-01-09", location: "창고" },
-  { id: "A1014", name: "ThinkPad X1 Carbon", status: "사용중", user: "윤채원", date: "2021-04-23", location: "본사" },
-  { id: "A1015", name: "HP EliteBook 840", status: "사용중", user: "강민준", date: "2022-02-17", location: "사무지사" },
-  { id: "A1016", name: "iPhone 13 mini", status: "미사용", user: "-", date: "2022-09-12", location: "창고" },
-  { id: "A1017", name: "Galaxy Tab S8", status: "사용중", user: "임서연", date: "2022-11-03", location: "본사" },
-  { id: "A1018", name: "Bose QC45 헤드폰", status: "사용중", user: "박인수", date: "2022-12-20", location: "본사" },
-  { id: "A1019", name: "LG 그램 16", status: "수리중", user: "정다은", date: "2023-02-14", location: "본사" },
-  { id: "A1020", name: "Apple Watch Series 8", status: "미사용", user: "-", date: "2023-03-01", location: "창고" },
-  { id: "A1021", name: "Razer Blade 15", status: "사용중", user: "최준혁", date: "2023-04-10", location: "본사" },
-  { id: "A1022", name: "ASUS ZenBook Pro", status: "사용중", user: "한지호", date: "2023-05-22", location: "사무지사" },
-  { id: "A1023", name: "Cisco IP Phone", status: "사용중", user: "윤채원", date: "2021-01-05", location: "본사" },
-  { id: "A1024", name: "Jabra Evolve2 85", status: "미사용", user: "-", date: "2023-06-15", location: "창고" },
-  { id: "A1025", name: "Wacom Intuos Pro", status: "사용중", user: "김지연", date: "2022-04-18", location: "본사" },
-  { id: "A1026", name: "Mac Mini M2", status: "사용중", user: "강민준", date: "2023-07-01", location: "사무지사" },
-  { id: "A1027", name: "Dell Precision 5570", status: "수리중", user: "오세영", date: "2022-06-30", location: "본사" },
-  { id: "A1028", name: "Samsung 외장 SSD T7", status: "미사용", user: "-", date: "2023-08-05", location: "창고" },
-  { id: "A1029", name: "Anker 허브 13in1", status: "사용중", user: "임서연", date: "2023-09-10", location: "본사" },
-  { id: "A1030", name: "iPhone 15 Pro", status: "사용중", user: "박인수", date: "2023-10-01", location: "본사" },
-];
-
-const initialMembers = [
-  { id: "M001", name: "박인수", department: "개발팀", email: "insu@company.com", role: "팀장" },
-  { id: "M002", name: "김지연", department: "디자인팀", email: "jiyeon@company.com", role: "팀장" },
-  { id: "M003", name: "이수민", department: "개발팀", email: "sumin@company.com", role: "팀원" },
-  { id: "M004", name: "최준혁", department: "마케팅팀", email: "junhyuk@company.com", role: "팀장" },
-  { id: "M005", name: "정다은", department: "HR팀", email: "daeun@company.com", role: "팀원" },
-  { id: "M006", name: "한지호", department: "개발팀", email: "jiho@company.com", role: "팀원" },
-  { id: "M007", name: "오세영", department: "경영지원팀", email: "seyoung@company.com", role: "팀장" },
-  { id: "M008", name: "윤채원", department: "마케팅팀", email: "chaewon@company.com", role: "팀원" },
-  { id: "M009", name: "강민준", department: "개발팀", email: "minjun@company.com", role: "팀원" },
-  { id: "M010", name: "임서연", department: "디자인팀", email: "seoyeon@company.com", role: "팀원" },
-  { id: "M011", name: "송태양", department: "HR팀", email: "taeyang@company.com", role: "팀장" },
-  { id: "M012", name: "배수지", department: "경영지원팀", email: "suji@company.com", role: "팀원" },
-  { id: "M013", name: "권도현", department: "마케팅팀", email: "dohyun@company.com", role: "팀원" },
-  { id: "M014", name: "나은혜", department: "디자인팀", email: "eunhye@company.com", role: "팀원" },
-  { id: "M015", name: "문성훈", department: "개발팀", email: "sunghoon@company.com", role: "팀원" },
-];
-
-const initialHistory = [
-  { id: "H001", assetId: "A1001", assetName: "Dell XPS 15", type: "배정", from: "-", to: "박인수", date: "2021-03-10", note: "신규 입사자 지급" },
-  { id: "H002", assetId: "A1002", assetName: "MacBook Pro 14", type: "배정", from: "-", to: "김지연", date: "2021-06-22", note: "디자인팀 지급" },
-  { id: "H003", assetId: "A1003", assetName: "iPhone 14 Pro", type: "배정", from: "-", to: "이수민", date: "2022-01-15", note: "업무용 지급" },
-  { id: "H004", assetId: "A1005", assetName: "Samsung Galaxy S23", type: "배정", from: "-", to: "최준혁", date: "2022-05-20", note: "마케팅팀 지급" },
-  { id: "H005", assetId: "A1006", assetName: "LG 울트라기어 모니터", type: "배정", from: "-", to: "정다은", date: "2021-09-14", note: "모니터 추가 지급" },
-  { id: "H006", assetId: "A1009", assetName: "Logitech MX Master 3", type: "배정", from: "-", to: "김지연", date: "2021-06-22", note: "마우스 지급" },
-  { id: "H007", assetId: "A1009", assetName: "Logitech MX Master 3", type: "반납", from: "김지연", to: "-", date: "2023-08-01", note: "수리 접수" },
-  { id: "H008", assetId: "A1011", assetName: "MacBook Air M2", type: "배정", from: "-", to: "한지호", date: "2022-10-05", note: "신규 입사자 지급" },
-  { id: "H009", assetId: "A1014", assetName: "ThinkPad X1 Carbon", type: "배정", from: "-", to: "윤채원", date: "2021-04-23", note: "업무용 지급" },
-  { id: "H010", assetId: "A1015", assetName: "HP EliteBook 840", type: "배정", from: "-", to: "강민준", date: "2022-02-17", note: "사무지사 지급" },
-  { id: "H011", assetId: "A1017", assetName: "Galaxy Tab S8", type: "배정", from: "-", to: "임서연", date: "2022-11-03", note: "디자인팀 지급" },
-  { id: "H012", assetId: "A1019", assetName: "LG 그램 16", type: "배정", from: "-", to: "정다은", date: "2023-02-14", note: "기기 교체" },
-  { id: "H013", assetId: "A1019", assetName: "LG 그램 16", type: "반납", from: "정다은", to: "-", date: "2023-09-01", note: "수리 접수" },
-  { id: "H014", assetId: "A1021", assetName: "Razer Blade 15", type: "배정", from: "-", to: "최준혁", date: "2023-04-10", note: "고성능 작업용" },
-  { id: "H015", assetId: "A1025", assetName: "Wacom Intuos Pro", type: "배정", from: "-", to: "김지연", date: "2022-04-18", note: "디자인 작업용" },
-  { id: "H016", assetId: "A1026", assetName: "Mac Mini M2", type: "배정", from: "-", to: "강민준", date: "2023-07-01", note: "개발 서버용" },
-  { id: "H017", assetId: "A1027", assetName: "Dell Precision 5570", type: "배정", from: "-", to: "오세영", date: "2022-06-30", note: "업무용 지급" },
-  { id: "H018", assetId: "A1027", assetName: "Dell Precision 5570", type: "반납", from: "오세영", to: "-", date: "2023-10-15", note: "수리 접수" },
-  { id: "H019", assetId: "A1029", assetName: "Anker 허브 13in1", type: "배정", from: "-", to: "임서연", date: "2023-09-10", note: "허브 추가 지급" },
-  { id: "H020", assetId: "A1030", assetName: "iPhone 15 Pro", type: "배정", from: "-", to: "박인수", date: "2023-10-01", note: "기기 교체 지급" },
-];
+const initialAssets = [];
+const initialMembers = [];
+const initialHistory = [];
 
 const DEPARTMENTS = ["개발팀", "디자인팀", "마케팅팀", "HR팀", "경영지원팀"];
 const STATUS_OPTIONS = ["사용중", "미사용", "수리중"];
@@ -672,6 +601,13 @@ function HistoryPage({ history }) {
 
 // ── 메인 App ──
 export default function App() {
+
+  // --- 인증 관련 상태 추가 ---
+  const [session, setSession] = useState(null);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [authLoading, setAuthLoading] = useState(false);
+
   const [assets, setAssets] = useState([]);
   const [members, setMembers] = useState([]);
   const [history, setHistory] = useState([]);
@@ -680,6 +616,10 @@ export default function App() {
 
   // ── 데이터 불러오기 ──
   useEffect(() => {
+    // 세션 감지 추가
+    supabase.auth.getSession().then(({ data: { session } }) => setSession(session));
+    supabase.auth.onAuthStateChange((_event, session) => setSession(session));
+
     const fetchAll = async () => {
       setLoading(true);
       const [{ data: a }, { data: m }, { data: h }] = await Promise.all([
@@ -694,6 +634,15 @@ export default function App() {
     };
     fetchAll();
   }, []);
+
+  // 로그인 처리 함수 추가
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    setAuthLoading(true);
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) alert("로그인 실패: " + error.message);
+    setAuthLoading(false);
+  };
 
   // ── assets 변경 시 Supabase 동기화 ──
   const updateAssets = async (newAssets) => {
@@ -752,6 +701,48 @@ export default function App() {
     </div>
   );
 
+  // --- 로그인 화면 추가 ---
+  if (!session) {
+    return (
+      <div style={{ 
+        height: "100vh", display: "flex", alignItems: "center", justifyContent: "center",
+        background: "linear-gradient(135deg, #0F172A 0%, #1E293B 100%)", fontFamily: "'Pretendard', sans-serif"
+      }}>
+        <div style={{ 
+          width: "100%", maxWidth: 400, padding: 40, borderRadius: 24,
+          background: "rgba(255, 255, 255, 0.05)", backdropFilter: "blur(12px)",
+          border: "1px solid rgba(255, 255, 255, 0.1)", textAlign: "center",
+          boxShadow: "0 20px 50px rgba(0,0,0,0.3)"
+        }}>
+          <div style={{ marginBottom: 32 }}>
+            <div style={{ width: 64, height: 64, background: C.primary, borderRadius: 18, margin: "0 auto 16px", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, boxShadow: `0 8px 20px ${C.primary}44` }}>📦</div>
+            <h1 style={{ color: "#fff", fontSize: 26, fontWeight: 800, margin: 0, letterSpacing: "-0.5px" }}>DURAE Assets</h1>
+            <p style={{ color: "rgba(255,255,255,0.4)", fontSize: 14, marginTop: 10, fontWeight: 500 }}>Admin Authentication</p>
+          </div>
+          
+          <form onSubmit={handleLogin} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <input 
+              type="email" placeholder="Admin Email" value={email} onChange={e => setEmail(e.target.value)}
+              style={{ width: "100%", padding: "16px 20px", borderRadius: 14, border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.05)", color: "#fff", fontSize: 15, outline: "none" }}
+            />
+            <input 
+              type="password" placeholder="Password" value={password} onChange={e => setPassword(e.target.value)}
+              style={{ width: "100%", padding: "16px 20px", borderRadius: 14, border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.05)", color: "#fff", fontSize: 15, outline: "none" }}
+            />
+            <button 
+              disabled={authLoading}
+              style={{ width: "100%", padding: "16px", borderRadius: 14, border: "none", background: C.primary, color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 16, marginTop: 12, transition: "transform 0.2s" }}
+              onMouseEnter={e => e.target.style.transform = "scale(1.02)"}
+              onMouseLeave={e => e.target.style.transform = "scale(1)"}
+            >
+              {authLoading ? "Authenticating..." : "Sign In"}
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={{ display: "flex", height: "100vh", fontFamily: "'Pretendard', 'Apple SD Gothic Neo', sans-serif", background: C.bg }}>
       <aside style={{ width: 224, background: C.sidebar, display: "flex", flexDirection: "column", flexShrink: 0 }}>
@@ -778,6 +769,13 @@ export default function App() {
           })}
         </nav>
         <div style={{ padding: "16px 20px", borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+          {/* 로그아웃 버튼 추가 */}
+          <button 
+            onClick={() => supabase.auth.signOut()}
+            style={{ width: "100%", padding: "8px", background: "rgba(239,68,68,0.1)", color: C.danger, border: "none", borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: "pointer", marginBottom: 12 }}
+          >
+            Sign Out
+          </button>
           <p style={{ margin: 0, fontSize: 11, color: "rgba(255,255,255,0.2)" }}>DURAE Assets v1.0.0</p>
         </div>
       </aside>
