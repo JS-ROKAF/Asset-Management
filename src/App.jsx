@@ -3,6 +3,7 @@ import {
   PieChart, Pie, Cell, Tooltip,
   BarChart, Bar, XAxis, YAxis, ResponsiveContainer
 } from "recharts";
+import { supabase } from "./supabase";
 
 // ── 초기 데이터 ──
 // ── 초기 데이터 ──
@@ -659,23 +660,70 @@ function HistoryPage({ history }) {
 
 // ── 메인 App ──
 export default function App() {
-  const [assets, setAssets] = useState(() => {
-    const saved = localStorage.getItem("assets");
-    return saved ? JSON.parse(saved) : initialAssets;
-  });
-  const [members, setMembers] = useState(() => {
-    const saved = localStorage.getItem("members");
-    return saved ? JSON.parse(saved) : initialMembers;
-  });
-  const [history, setHistory] = useState(() => {
-    const saved = localStorage.getItem("history");
-    return saved ? JSON.parse(saved) : initialHistory;
-  });
+  const [assets, setAssets] = useState([]);
+  const [members, setMembers] = useState([]);
+  const [history, setHistory] = useState([]);
   const [page, setPage] = useState("dashboard");
+  const [loading, setLoading] = useState(true);
 
-  useEffect(() => { localStorage.setItem("assets", JSON.stringify(assets)); }, [assets]);
-  useEffect(() => { localStorage.setItem("members", JSON.stringify(members)); }, [members]);
-  useEffect(() => { localStorage.setItem("history", JSON.stringify(history)); }, [history]);
+  // ── 데이터 불러오기 ──
+  useEffect(() => {
+    const fetchAll = async () => {
+      setLoading(true);
+      const [{ data: a }, { data: m }, { data: h }] = await Promise.all([
+        supabase.from("assets").select("*"),
+        supabase.from("members").select("*"),
+        supabase.from("history").select("*").order("date", { ascending: true }),
+      ]);
+      setAssets(a || []);
+      setMembers(m || []);
+      setHistory(h || []);
+      setLoading(false);
+    };
+    fetchAll();
+  }, []);
+
+  // ── assets 변경 시 Supabase 동기화 ──
+  const updateAssets = async (newAssets) => {
+    setAssets(newAssets);
+    const prev = assets;
+    // 추가된 항목
+    const added = newAssets.filter(n => !prev.find(p => p.id === n.id));
+    // 삭제된 항목
+    const removed = prev.filter(p => !newAssets.find(n => n.id === p.id));
+    // 수정된 항목
+    const updated = newAssets.filter(n => {
+      const old = prev.find(p => p.id === n.id);
+      return old && JSON.stringify(old) !== JSON.stringify(n);
+    });
+    if (added.length)   await supabase.from("assets").insert(added);
+    if (removed.length) await supabase.from("assets").delete().in("id", removed.map(r => r.id));
+    if (updated.length) await Promise.all(updated.map(u => supabase.from("assets").update(u).eq("id", u.id)));
+  };
+
+  // ── members 변경 시 Supabase 동기화 ──
+  const updateMembers = async (newMembers) => {
+    setMembers(newMembers);
+    const prev = members;
+    const added   = newMembers.filter(n => !prev.find(p => p.id === n.id));
+    const removed = prev.filter(p => !newMembers.find(n => n.id === p.id));
+    const updated = newMembers.filter(n => {
+      const old = prev.find(p => p.id === n.id);
+      return old && JSON.stringify(old) !== JSON.stringify(n);
+    });
+    if (added.length)   await supabase.from("members").insert(added);
+    if (removed.length) await supabase.from("members").delete().in("id", removed.map(r => r.id));
+    if (updated.length) await Promise.all(updated.map(u => supabase.from("members").update(u).eq("id", u.id)));
+  };
+
+  // ── history 변경 시 Supabase 동기화 ──
+  const updateHistory = async (newHistory) => {
+    setHistory(newHistory);
+    const prev = history;
+    const added = typeof newHistory === "function"
+      ? [] : newHistory.filter(n => !prev.find(p => p.id === n.id));
+    if (added.length) await supabase.from("history").insert(added);
+  };
 
   const menuItems = [
     { key: "dashboard", icon: "dashboard", label: "대시보드" },
@@ -684,58 +732,47 @@ export default function App() {
     { key: "history",   icon: "history",   label: "이력 관리" },
   ];
 
+  if (loading) return (
+    <div style={{ display: "flex", height: "100vh", alignItems: "center", justifyContent: "center", background: C.bg, flexDirection: "column", gap: 16 }}>
+      <div style={{ width: 40, height: 40, border: `3px solid ${C.border}`, borderTop: `3px solid ${C.primary}`, borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+      <p style={{ color: C.textLight, fontSize: 14 }}>데이터 불러오는 중...</p>
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+    </div>
+  );
+
   return (
     <div style={{ display: "flex", height: "100vh", fontFamily: "'Pretendard', 'Apple SD Gothic Neo', sans-serif", background: C.bg }}>
-
-      {/* ── 사이드바 ── */}
       <aside style={{ width: 224, background: C.sidebar, display: "flex", flexDirection: "column", flexShrink: 0 }}>
-        {/* 로고 */}
         <div style={{ padding: "28px 20px 24px", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <div style={{ width: 32, height: 32, borderRadius: 8, background: C.primary, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>
-              📦
-            </div>
+            <div style={{ width: 32, height: 32, borderRadius: 8, background: C.primary, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>📦</div>
             <span style={{ color: "#fff", fontWeight: 800, fontSize: 17, letterSpacing: "-0.3px" }}>AssetHub</span>
           </div>
         </div>
-
-        {/* 메뉴 */}
         <nav style={{ flex: 1, padding: "12px 10px" }}>
           <p style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.25)", letterSpacing: "0.08em", padding: "8px 10px 4px", margin: 0 }}>MENU</p>
           {menuItems.map(({ key, icon, label }) => {
             const active = page === key;
             return (
               <div key={key} onClick={() => setPage(key)}
-                style={{
-                  display: "flex", alignItems: "center", gap: 10,
-                  padding: "10px 12px", borderRadius: 8, marginBottom: 2,
-                  cursor: "pointer",
-                  background: active ? C.sidebarActive : "transparent",
-                  transition: "background 0.15s",
-                }}
+                style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: 8, marginBottom: 2, cursor: "pointer", background: active ? C.sidebarActive : "transparent", transition: "background 0.15s" }}
                 onMouseEnter={e => { if (!active) e.currentTarget.style.background = C.sidebarHover; }}
-                onMouseLeave={e => { if (!active) e.currentTarget.style.background = "transparent"; }}
-              >
+                onMouseLeave={e => { if (!active) e.currentTarget.style.background = "transparent"; }}>
                 <Icon type={icon} active={active} />
-                <span style={{ fontSize: 14, fontWeight: active ? 600 : 400, color: active ? "#fff" : "rgba(255,255,255,0.5)", letterSpacing: "-0.1px" }}>
-                  {label}
-                </span>
+                <span style={{ fontSize: 14, fontWeight: active ? 600 : 400, color: active ? "#fff" : "rgba(255,255,255,0.5)", letterSpacing: "-0.1px" }}>{label}</span>
                 {active && <div style={{ marginLeft: "auto", width: 6, height: 6, borderRadius: "50%", background: C.primary }} />}
               </div>
             );
           })}
         </nav>
-
-        {/* 하단 버전 */}
         <div style={{ padding: "16px 20px", borderTop: "1px solid rgba(255,255,255,0.06)" }}>
           <p style={{ margin: 0, fontSize: 11, color: "rgba(255,255,255,0.2)" }}>AssetHub v1.0.0</p>
         </div>
       </aside>
 
-      {/* ── 페이지 ── */}
       {page === "dashboard" && <Dashboard assets={assets} members={members} history={history} />}
-      {page === "assets"    && <AssetPage assets={assets} setAssets={setAssets} history={history} setHistory={setHistory} />}
-      {page === "members"   && <MemberPage members={members} setMembers={setMembers} assets={assets} />}
+      {page === "assets"    && <AssetPage assets={assets} setAssets={updateAssets} history={history} setHistory={updateHistory} />}
+      {page === "members"   && <MemberPage members={members} setMembers={updateMembers} assets={assets} />}
       {page === "history"   && <HistoryPage history={history} />}
     </div>
   );
