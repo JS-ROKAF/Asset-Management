@@ -16,6 +16,10 @@ const HISTORY_STYLES = {
   "입고":    { background: "#D1FAE5", color: "#065F46" },
   "상태변경": { background: "#F3F0FF", color: "#6D28D9" },
 };
+const ASSET_TYPES = ["노트북", "스마트폰", "태블릿", "모니터", "키보드/마우스", "헤드셋", "기타"];
+// 사용자 표시용 헬퍼 — "-"를 "미배정"으로 변환
+const displayUser = (user) => (!user || user === "-") ? "미배정" : user;
+
 
 // ── 색상 / 디자인 토큰 ──
 const C = {
@@ -151,11 +155,11 @@ const PageHeader = ({ title, subtitle, action }) => (
 );
 
 const SummaryCards = ({ items }) => (
-  <div style={{ display: "grid", gridTemplateColumns: `repeat(${items.length}, 1fr)`, gap: 16, marginBottom: 28 }}>
+  <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.min(items.length, 5)}, 1fr)`, gap: 12, marginBottom: 28 }}>
     {items.map(({ label, value, color }) => (
-      <div key={label} style={{ background: C.card, borderRadius: 12, padding: "20px 24px", boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}>
-        <p style={{ margin: 0, fontSize: 13, color: C.textLight, fontWeight: 500 }}>{label}</p>
-        <p style={{ margin: "8px 0 0", fontSize: 28, fontWeight: 700, color }}>{value}</p>
+      <div key={label} style={{ background: C.card, borderRadius: 12, padding: "16px 20px", boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}>
+        <p style={{ margin: 0, fontSize: 12, color: C.textLight, fontWeight: 500 }}>{label}</p>
+        <p style={{ margin: "6px 0 0", fontSize: 24, fontWeight: 700, color }}>{value}</p>
       </div>
     ))}
   </div>
@@ -198,10 +202,55 @@ const SortableTable = ({ headers, rows, data, sortKey, sortDir, onSort }) => (
   </div>
 );
 
-// ── 정렬 훅 ──
-function useSort(data, defaultKey) {
+// ── 페이지네이션 ──
+const Pagination = ({ total, page, perPage, onChange }) => {
+  const totalPages = Math.ceil(total / perPage);
+  if (totalPages <= 1) return null;
+
+  return (
+    <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 6, marginTop: 16 }}>
+      <button onClick={() => onChange(1)} disabled={page === 1}
+        style={{ padding: "6px 10px", borderRadius: 6, border: `1px solid ${C.border}`, background: C.card, color: page === 1 ? C.textLight : C.textMuted, cursor: page === 1 ? "default" : "pointer", fontSize: 13 }}>
+        «
+      </button>
+      <button onClick={() => onChange(page - 1)} disabled={page === 1}
+        style={{ padding: "6px 10px", borderRadius: 6, border: `1px solid ${C.border}`, background: C.card, color: page === 1 ? C.textLight : C.textMuted, cursor: page === 1 ? "default" : "pointer", fontSize: 13 }}>
+        ‹
+      </button>
+      {Array.from({ length: totalPages }, (_, i) => i + 1)
+        .filter(p => p === 1 || p === totalPages || Math.abs(p - page) <= 2)
+        .reduce((acc, p, i, arr) => {
+          if (i > 0 && p - arr[i - 1] > 1) acc.push("...");
+          acc.push(p);
+          return acc;
+        }, [])
+        .map((p, i) => p === "..." ? (
+          <span key={`ellipsis-${i}`} style={{ padding: "6px 4px", color: C.textLight, fontSize: 13 }}>...</span>
+        ) : (
+          <button key={p} onClick={() => onChange(p)}
+            style={{ padding: "6px 10px", borderRadius: 6, border: `1px solid ${p === page ? C.primary : C.border}`, background: p === page ? C.primary : C.card, color: p === page ? "#fff" : C.textMuted, cursor: "pointer", fontSize: 13, fontWeight: p === page ? 700 : 400 }}>
+            {p}
+          </button>
+        ))
+      }
+      <button onClick={() => onChange(page + 1)} disabled={page === totalPages}
+        style={{ padding: "6px 10px", borderRadius: 6, border: `1px solid ${C.border}`, background: C.card, color: page === totalPages ? C.textLight : C.textMuted, cursor: page === totalPages ? "default" : "pointer", fontSize: 13 }}>
+        ›
+      </button>
+      <button onClick={() => onChange(totalPages)} disabled={page === totalPages}
+        style={{ padding: "6px 10px", borderRadius: 6, border: `1px solid ${C.border}`, background: C.card, color: page === totalPages ? C.textLight : C.textMuted, cursor: page === totalPages ? "default" : "pointer", fontSize: 13 }}>
+        »
+      </button>
+      <span style={{ fontSize: 13, color: C.textLight, marginLeft: 8 }}>
+        총 {total}개 중 {Math.min((page - 1) * perPage + 1, total)}~{Math.min(page * perPage, total)}
+      </span>
+    </div>
+  );
+};
+
+function useSort(data, defaultKey, defaultDir = "desc") {
   const [sortKey, setSortKey] = useState(defaultKey || "");
-  const [sortDir, setSortDir] = useState("asc");
+  const [sortDir, setSortDir] = useState(defaultDir); // "asc" → defaultDir로 변경
 
   const handleSort = (key) => {
     if (sortKey === key) setSortDir(d => d === "asc" ? "desc" : "asc");
@@ -213,7 +262,9 @@ function useSort(data, defaultKey) {
     const va = a[sortKey] ?? "";
     const vb = b[sortKey] ?? "";
     const cmp = String(va).localeCompare(String(vb), "ko");
-    return sortDir === "asc" ? cmp : -cmp;
+    if (cmp !== 0) return sortDir === "asc" ? cmp : -cmp;
+    // 같은 값이면 id 기준 내림차순 (최근 생성 순)
+    return String(b.id).localeCompare(String(a.id));
   });
 
   return { sorted, sortKey, sortDir, handleSort };
@@ -263,6 +314,7 @@ function Dashboard({ assets, members, history }) {
       <SummaryCards items={[
         { label: "전체 자산", value: assets.length, color: C.primary },
         { label: "사용중", value: assets.filter(a => a.status === "사용중").length, color: "#10B981" },
+        { label: "미사용", value: assets.filter(a => a.status === "미사용").length, color: C.textMuted },
         { label: "수리중", value: assets.filter(a => a.status === "수리중").length, color: C.danger },
         { label: "전체 구성원", value: members.length, color: C.purple },
       ]} />
@@ -308,7 +360,7 @@ function Dashboard({ assets, members, history }) {
             <div key={h.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0", borderBottom: `1px solid ${C.bg}` }}>
               <HistoryBadge type={h.type} />
               <span style={{ fontSize: 14, color: C.text, fontWeight: 500, flex: 1 }}>{h.assetName}</span>
-              <span style={{ fontSize: 13, color: C.textMuted }}>{h.from} → {h.to}</span>
+              <span style={{ fontSize: 13, color: C.textMuted }}>{displayUser(h.from)} → {displayUser(h.to)}</span>
               <span style={{ fontSize: 12, color: C.textLight }}>{h.date}</span>
             </div>
           ))
@@ -321,45 +373,66 @@ function Dashboard({ assets, members, history }) {
 // ── 자산관리 ──
 function AssetPage({ assets, setAssets, history, members }) {
   const [addOpen, setAddOpen] = useState(false);
-  const [form, setForm] = useState({ name: "", location: "", user: "" });
+  const [form, setForm] = useState({ name: "", location: "", user: "", type: "기타" });
   const [selected, setSelected] = useState(null);
   const [editMode, setEditMode] = useState(false);
   const [editForm, setEditForm] = useState({});
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState("전체");
-
-  // [수정 6] 정렬
+  const [currentPage, setCurrentPage] = useState(1);
+  const PER_PAGE = 15;
   const memberNames = members.map(m => m.name);
+
+  // 검색이나 필터 변경 시 1페이지로 초기화
+  useEffect(() => { setCurrentPage(1); }, [search, filterStatus]);
 
   const base = assets.filter(a => {
     const matchStatus = filterStatus === "전체" || a.status === filterStatus;
     const matchSearch = [a.id, a.name, a.user, a.location].some(v => v?.toLowerCase().includes(search.toLowerCase()));
     return matchStatus && matchSearch;
   });
-  const { sorted: filtered, sortKey, sortDir, handleSort } = useSort(base, "date");
-
-  // [수정 3] 신규 등록 시 사용자 지정 + 이력 기록
+  const { sorted, sortKey, sortDir, handleSort } = useSort(base, "date");
+  const totalFiltered = sorted.length;
+  const filtered = sorted.slice((currentPage - 1) * PER_PAGE, currentPage * PER_PAGE);
+  
   const addAsset = () => {
     if (!form.name || !form.location) return;
-    // [수정 4] 구성원 목록에 없는 사용자 차단
-    if (form.user && !memberNames.includes(form.user)) {
-      alert(`'${form.user}'은(는) 구성원 목록에 없는 사용자입니다.\n구성원 관리에서 먼저 등록해주세요.`);
+
+    // "미배정"을 기본값으로 처리하는 로직
+    const isAssigned = form.user && form.user !== "";
+
+    // 구성원 목록 확인
+    if (isAssigned && !memberNames.includes(form.user)) {
+      alert(`'${form.user}'은(는) 구성원 목록에 없는 사용자입니다.`);
       return;
     }
+
     const newAsset = {
       id: "A" + Math.floor(Math.random() * 90000 + 10000),
       name: form.name,
-      status: form.user ? "사용중" : "미사용",
-      user: form.user || "-",
+      type: form.type || "기타",   // ← 추가
+      status: isAssigned ? "사용중" : "미사용",
+      user: isAssigned ? form.user : "-",
       date: new Date().toISOString().slice(0, 10),
       location: form.location,
     };
-    // 입고 이력 + 사용자 있으면 배정 이력도 함께
-    const histories = [makeHistory("입고", newAsset, "-", "-", "신규 자산 시스템 입고")];
-    if (form.user) histories.push(makeHistory("배정", newAsset, "-", form.user, "신규 등록 시 배정"));
-    setAssets([...assets, newAsset], histories);
+
+    const histories = [];
+    
+    // 1. [입고] 이력 생성 (항상 생성)
+    histories.push(makeHistory("입고", newAsset, "-", "-", "신규 자산 시스템 입고"));
+
+    // 2. [배정] 이력 생성 (사용자가 지정된 경우만)
+    if (isAssigned) {
+      histories.push(makeHistory("배정", newAsset, "-", form.user, "신규 등록 시 즉시 배정"));
+    }
+
+    // 데이터 반영 (App.jsx의 updateAssets 호출)
+    setAssets([...assets, newAsset], histories); 
+    
+    // 폼 초기화 및 닫기
     setAddOpen(false);
-    setForm({ name: "", location: "", user: "" });
+    setForm({ name: "", location: "", user: "", type: "기타" });
   };
 
   // [수정 1,2] 수정 저장 - 상태/사용자 변경에 따른 자동 처리
@@ -372,19 +445,19 @@ function AssetPage({ assets, setAssets, history, members }) {
     const statusChanged = prev.status !== updated.status;
 
     // [수정 4] 구성원 목록에 없는 사용자 차단
-    if (updated.user && updated.user !== "-" && !memberNames.includes(updated.user)) {
+    if (updated.user && updated.user !== "-" && updated.user !== "미배정" && !memberNames.includes(updated.user)) {
       alert(`'${updated.user}'은(는) 구성원 목록에 없는 사용자입니다.\n구성원 관리에서 먼저 등록해주세요.`);
       return;
     }
 
     // [수정 1] 미사용으로 변경 시 사용자 자동 초기화
-    if (updated.status === "미사용" && updated.user !== "-") {
+    if (updated.status === "미사용" && updated.user !== "-" && updated.user !== "미배정") {
       const prevUser = updated.user;
       updated.user = "-";
       histories.push(makeHistory("반납", updated, prevUser, "-", "미사용 처리로 인한 자동 반납"));
     }
     // [수정 1] 수리중으로 변경 시 사용자 자동 초기화
-    else if (updated.status === "수리중" && updated.user !== "-") {
+    else if (updated.status === "수리중" && updated.user !== "-" && updated.user !== "미배정") {
       const prevUser = updated.user;
       updated.user = "-";
       histories.push(makeHistory("반납", updated, prevUser, "-", "수리 입고로 인한 자동 반납"));
@@ -423,6 +496,7 @@ function AssetPage({ assets, setAssets, history, members }) {
   const ASSET_HEADERS = [
     { label: "자산번호", key: "id" },
     { label: "자산명", key: "name" },
+    { label: "유형", key: "type" },
     { label: "상태", key: "status" },
     { label: "사용자", key: "user" },
     { label: "위치", key: "location" },
@@ -436,7 +510,9 @@ function AssetPage({ assets, setAssets, history, members }) {
       <SummaryCards items={[
         { label: "전체 자산", value: assets.length, color: C.primary },
         { label: "사용중", value: assets.filter(a => a.status === "사용중").length, color: "#10B981" },
+        { label: "미사용", value: assets.filter(a => a.status === "미사용").length, color: C.textMuted },
         { label: "수리중", value: assets.filter(a => a.status === "수리중").length, color: C.danger },
+        { label: "전체 구성원", value: members.length, color: C.purple },
       ]} />
       <SearchFilter value={search} onChange={setSearch}
         filters={["전체", "사용중", "미사용", "수리중"]} active={filterStatus} onFilter={setFilterStatus} />
@@ -451,18 +527,22 @@ function AssetPage({ assets, setAssets, history, members }) {
             onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
             <td style={{ padding: "14px 20px", fontSize: 14, color: C.text }}>{a.id}</td>
             <td style={{ padding: "14px 20px", fontSize: 14, color: C.text }}>{a.name}</td>
+            <td style={{ padding: "14px 20px", fontSize: 14, color: C.textMuted }}>{a.type || "기타"}</td>
             <td style={{ padding: "14px 20px" }}><StatusBadge status={a.status} /></td>
-            <td style={{ padding: "14px 20px", fontSize: 14, color: C.text }}>{a.user}</td>
+            <td style={{ padding: "14px 20px", fontSize: 14, color: a.user === "-" ? C.textLight : C.text }}>{displayUser(a.user)}</td>
             <td style={{ padding: "14px 20px", fontSize: 14, color: C.text }}>{a.location}</td>
             <td style={{ padding: "14px 20px", fontSize: 14, color: C.text }}>{a.date}</td>
           </tr>
         ))}
       />
 
+      <Pagination total={totalFiltered} page={currentPage} perPage={PER_PAGE} onChange={setCurrentPage} />
+
       {addOpen && (
         <Modal title="자산 등록" onClose={() => setAddOpen(false)}>
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
             <InputField label="자산명" value={form.name} onChange={v => setForm({ ...form, name: v })} />
+            <SelectField label="유형" value={form.type || "기타"} onChange={v => setForm({ ...form, type: v })} options={ASSET_TYPES} />
             <InputField label="위치" value={form.location} onChange={v => setForm({ ...form, location: v })} />
             {/* [수정 4] 사용자 입력 시 구성원 목록에서 선택 */}
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -486,7 +566,7 @@ function AssetPage({ assets, setAssets, history, members }) {
           {editMode ? (
             <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
               <InputField label="자산명" value={editForm.name} onChange={v => setEditForm({ ...editForm, name: v })} />
-              {/* [수정 4] 수정 시에도 구성원 목록에서 선택 */}
+              <SelectField label="유형" value={editForm.type || "기타"} onChange={v => setEditForm({ ...editForm, type: v })} options={ASSET_TYPES} />
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                 <label style={{ fontSize: 12, color: C.textMuted, fontWeight: 600 }}>사용자</label>
                 <select value={editForm.user === "-" ? "" : editForm.user}
@@ -514,8 +594,9 @@ function AssetPage({ assets, setAssets, history, members }) {
                 {[
                   { label: "자산번호", value: selected.id },
                   { label: "자산명", value: selected.name },
+                  { label: "유형", value: selected.type || "기타" },
                   { label: "상태", value: <StatusBadge status={selected.status} /> },
-                  { label: "사용자", value: selected.user },
+                  { label: "사용자", value: displayUser(selected.user) },
                   { label: "위치", value: selected.location },
                   { label: "등록일", value: selected.date },
                 ].map(({ label, value }) => <Field key={label} label={label} value={value} />)}
@@ -554,11 +635,23 @@ function MemberPage({ members, setMembers, assets, setAssets }) {
   const [editForm, setEditForm] = useState({});
   const [search, setSearch] = useState("");
   const [filterDept, setFilterDept] = useState("전체");
+  const [sortBy, setSortBy] = useState("name"); // 기본: 이름순
 
   const filtered = members.filter(m => {
     const matchDept = filterDept === "전체" || m.department === filterDept;
     const matchSearch = [m.name, m.email, m.role].some(v => v.toLowerCase().includes(search.toLowerCase()));
     return matchDept && matchSearch;
+  });
+
+  const sorted = [...filtered].sort((a, b) => {
+    if (sortBy === "name") return a.name.localeCompare(b.name, "ko");
+    if (sortBy === "department") return a.department.localeCompare(b.department, "ko");
+    if (sortBy === "assets") {
+      const aCount = assets.filter(asset => asset.user === a.name).length;
+      const bCount = assets.filter(asset => asset.user === b.name).length;
+      return bCount - aCount;
+    }
+    return 0;
   });
 
   const addMember = () => {
@@ -569,18 +662,48 @@ function MemberPage({ members, setMembers, assets, setAssets }) {
   };
 
   const saveMember = () => {
+    const prev = members.find(m => m.id === editForm.id);
+    const nameChanged = prev.name !== editForm.name;
+
+    // 이름이 변경된 경우 해당 구성원의 자산 user 필드도 함께 업데이트
+    if (nameChanged) {
+      const updatedAssets = assets.map(a =>
+        a.user === prev.name ? { ...a, user: editForm.name } : a
+      );
+      setAssets(updatedAssets, []); // 이력은 생성하지 않음
+    }
+
     setMembers(members.map(m => m.id === editForm.id ? editForm : m));
     setSelected(editForm);
     setEditMode(false);
   };
 
-  // [수정 5] 구성원 삭제 시 배정 자산 자동 미배정 처리
+  // [수정 5] 구성원 삭제 시 배정 자산 자동 미배정 처리 및 이력 생성
   const deleteMember = () => {
     if (!window.confirm(`'${selected.name}'을(를) 삭제할까요?\n이 구성원에게 배정된 자산은 자동으로 미배정(미사용) 처리됩니다.`)) return;
-    const updatedAssets = assets.map(a =>
-      a.user === selected.name ? { ...a, user: "-", status: "미사용" } : a
-    );
-    setAssets(updatedAssets, []);
+
+    const histories = []; // 생성할 이력을 담을 배열
+    
+    const updatedAssets = assets.map(a => {
+      if (a.user === selected.name) {
+        const updatedAsset = { ...a, user: "-", status: "미사용" };
+        
+        // 삭제되는 구성원이 보유했던 각 자산에 대해 '반납' 이력 생성
+        histories.push(makeHistory(
+          "반납", 
+          updatedAsset, 
+          selected.name, 
+          "-", 
+          "구성원 삭제로 인한 자동 반납 처리"
+        ));
+        
+        return updatedAsset;
+      }
+      return a;
+    });
+
+    // setAssets 호출 시 생성된 histories 배열을 함께 전달
+    setAssets(updatedAssets, histories); 
     setMembers(members.filter(m => m.id !== selected.id));
     setSelected(null);
   };
@@ -598,8 +721,17 @@ function MemberPage({ members, setMembers, assets, setAssets }) {
       <SearchFilter value={search} onChange={setSearch}
         filters={["전체", ...DEPARTMENTS]} active={filterDept} onFilter={setFilterDept} activeColor={C.purple} />
 
+      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
+        <select value={sortBy} onChange={e => setSortBy(e.target.value)}
+          style={{ border: `1px solid ${C.border}`, borderRadius: 8, padding: "7px 12px", fontSize: 13, color: C.textMuted, outline: "none", background: C.card, cursor: "pointer" }}>
+          <option value="name">이름순</option>
+          <option value="department">부서순</option>
+          <option value="assets">보유 자산 많은 순</option>
+        </select>
+      </div>
+
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16 }}>
-        {filtered.map(m => {
+        {sorted.map(m => {
           const myAssets = memberAssets(m.name);
           return (
             <div key={m.id} onClick={() => { setSelected(m); setEditMode(false); }}
@@ -700,7 +832,9 @@ function MemberPage({ members, setMembers, assets, setAssets }) {
 function HistoryPage({ history }) {
   const [filterType, setFilterType] = useState("전체");
   const [search, setSearch] = useState("");
-
+  const [currentPage, setCurrentPage] = useState(1);
+  const PER_PAGE = 15;
+  useEffect(() => { setCurrentPage(1); }, [search, filterType]);
   const base = history.filter(h => {
     const matchType = filterType === "전체" || h.type === filterType;
     const matchSearch = [h.assetName, h.assetId, h.from, h.to, h.note].some(v =>
@@ -709,7 +843,9 @@ function HistoryPage({ history }) {
     return matchType && matchSearch;
   });
 
-  const { sorted: filtered, sortKey, sortDir, handleSort } = useSort(base, "date");
+  const { sorted, sortKey, sortDir, handleSort } = useSort(base, "date");
+  const totalFiltered = sorted.length;
+  const filtered = sorted.slice((currentPage - 1) * PER_PAGE, currentPage * PER_PAGE);
 
   const HISTORY_HEADERS = [
     { label: "구분", key: "type" },
@@ -728,6 +864,7 @@ function HistoryPage({ history }) {
         { label: "배정", value: history.filter(h => h.type === "배정").length, color: "#1D4ED8" },
         { label: "반납", value: history.filter(h => h.type === "반납").length, color: "#92400E" },
         { label: "입고", value: history.filter(h => h.type === "입고").length, color: "#065F46" },
+        { label: "상태변경", value: history.filter(h => h.type === "상태변경").length, color: "#6D28D9" },
       ]} />
       <SearchFilter value={search} onChange={setSearch}
         filters={HISTORY_TYPES} active={filterType} onFilter={setFilterType} />
@@ -741,8 +878,8 @@ function HistoryPage({ history }) {
               onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
               <td style={{ padding: "14px 20px" }}><HistoryBadge type={h.type} /></td>
               <td style={{ padding: "14px 20px", fontSize: 14, color: C.text, fontWeight: 500 }}>{h.assetName}</td>
-              <td style={{ padding: "14px 20px", fontSize: 14, color: C.textMuted }}>{h.from}</td>
-              <td style={{ padding: "14px 20px", fontSize: 14, color: C.text, fontWeight: 500 }}>{h.to}</td>
+              <td style={{ padding: "14px 20px", fontSize: 14, color: C.textMuted }}>{displayUser(h.from)}</td>
+              <td style={{ padding: "14px 20px", fontSize: 14, color: C.text, fontWeight: 500 }}>{displayUser(h.to)}</td>
               <td style={{ padding: "14px 20px", fontSize: 13, color: C.textLight }}>{h.note || "-"}</td>
               <td style={{ padding: "14px 20px", fontSize: 13, color: C.textLight }}>{h.date}</td>
             </tr>
@@ -750,6 +887,7 @@ function HistoryPage({ history }) {
           : [<tr key="empty"><td colSpan={6} style={{ padding: "40px", textAlign: "center", fontSize: 14, color: "#CBD5E1" }}>이력이 없습니다</td></tr>]
         }
       />
+      <Pagination total={totalFiltered} page={currentPage} perPage={PER_PAGE} onChange={setCurrentPage} />
     </main>
   );
 }
@@ -791,6 +929,14 @@ export default function App() {
     });
   }, []);
 
+  /* 3분마다 자동 새로고침 (현재는 보류)
+  useEffect(() => {
+    if (!session) return;
+    const interval = setInterval(fetchAll, 3 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [session]);
+  */
+
   const handleLogin = async (e) => {
     e.preventDefault();
     setAuthLoading(true);
@@ -799,12 +945,11 @@ export default function App() {
     setAuthLoading(false);
   };
 
-  // ── assets 변경 시 Supabase 동기화 ──
-  // histories: makeHistory()로 만든 이력 배열을 함께 전달
   const updateAssets = async (newAssets, histories = []) => {
+    // 1. 자산 상태 즉시 반영
     setAssetsState(newAssets);
-    const prev = assets;
 
+    const prev = assets;
     const added   = newAssets.filter(n => !prev.find(p => p.id === n.id));
     const removed = prev.filter(p => !newAssets.find(n => n.id === p.id));
     const updated = newAssets.filter(n => {
@@ -812,17 +957,23 @@ export default function App() {
       return old && JSON.stringify(old) !== JSON.stringify(n);
     });
 
+    // DB 연동
     if (added.length)   await supabase.from("assets").insert(added);
     if (removed.length) await supabase.from("assets").delete().in("id", removed.map(r => r.id));
     if (updated.length) await Promise.all(updated.map(u => supabase.from("assets").update(u).eq("id", u.id)));
 
-    // 이력 저장
+    // 2. 이력 저장 및 최신순 정렬 로직
     if (histories.length > 0) {
       await supabase.from("history").insert(histories);
-      // 최신 이력 다시 불러오기
-      const { data: hData } = await supabase.from("history").select("*").order("date", { ascending: false });
-      if (hData) setHistoryState(hData);
     }
+
+    // 이력이 있든 없든 최신 목록을 가져와서 정렬 상태 유지 (데이터 무결성)
+    const { data: hData } = await supabase.from("history")
+      .select("*")
+      .order("date", { ascending: false }) // 1차: 날짜 최신순
+      .order("id", { ascending: false });  // 2차: 같은 날짜면 나중에 생성된 순
+
+    if (hData) setHistoryState(hData);
   };
 
   // ── members 변경 시 Supabase 동기화 ──
@@ -921,6 +1072,12 @@ export default function App() {
           })}
         </nav>
         <div style={{ padding: "16px 20px", borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+          <button
+            onClick={fetchAll}
+            style={{ width: "100%", padding: "8px", background: "rgba(59,130,246,0.1)", color: C.primary, border: "none", borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: "pointer", marginBottom: 8 }}
+          >
+            ↺ 새로고침
+          </button>
           <button
             onClick={() => supabase.auth.signOut()}
             style={{ width: "100%", padding: "8px", background: "rgba(239,68,68,0.1)", color: C.danger, border: "none", borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: "pointer", marginBottom: 12 }}
