@@ -6,14 +6,16 @@ import {
 import { supabase } from "./supabase";
 import { exportToExcel } from "./exportExcel";
 
-// ── 초기 데이터 ──
-const initialAssets = [];
-const initialMembers = [];
-const initialHistory = [];
-
 const DEPARTMENTS = ["개발팀", "디자인팀", "마케팅팀", "HR팀", "경영지원팀"];
 const STATUS_OPTIONS = ["사용중", "미사용", "수리중"];
 const STATUS_COLORS = { "사용중": "#10B981", "미사용": "#94A3B8", "수리중": "#EF4444" };
+const HISTORY_TYPES = ["전체", "배정", "반납", "입고", "상태변경"];
+const HISTORY_STYLES = {
+  "배정":    { background: "#DBEAFE", color: "#1D4ED8" },
+  "반납":    { background: "#FEF3C7", color: "#92400E" },
+  "입고":    { background: "#D1FAE5", color: "#065F46" },
+  "상태변경": { background: "#F3F0FF", color: "#6D28D9" },
+};
 
 // ── 색상 / 디자인 토큰 ──
 const C = {
@@ -76,9 +78,7 @@ const StatusBadge = ({ status }) => {
 };
 
 const HistoryBadge = ({ type }) => {
-  const style = type === "배정"
-    ? { background: "#DBEAFE", color: "#1D4ED8" }
-    : { background: "#FEF3C7", color: "#92400E" };
+  const style = HISTORY_STYLES[type] || { background: "#F1F5F9", color: "#64748B" };
   return <span style={{ ...style, padding: "3px 10px", borderRadius: 99, fontSize: 12, fontWeight: 600 }}>{type}</span>;
 };
 
@@ -122,7 +122,6 @@ const SelectField = ({ label, value, onChange, options }) => (
   </div>
 );
 
-// 통일된 버튼 컴포넌트
 const Btn = ({ onClick, children, variant = "primary", small }) => {
   const styles = {
     primary: { background: C.primary, color: "#fff", border: "none" },
@@ -141,7 +140,6 @@ const Btn = ({ onClick, children, variant = "primary", small }) => {
   );
 };
 
-// ── 페이지 헤더 ──
 const PageHeader = ({ title, subtitle, action }) => (
   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 28 }}>
     <div>
@@ -152,7 +150,6 @@ const PageHeader = ({ title, subtitle, action }) => (
   </div>
 );
 
-// ── 요약 카드 ──
 const SummaryCards = ({ items }) => (
   <div style={{ display: "grid", gridTemplateColumns: `repeat(${items.length}, 1fr)`, gap: 16, marginBottom: 28 }}>
     {items.map(({ label, value, color }) => (
@@ -164,7 +161,6 @@ const SummaryCards = ({ items }) => (
   </div>
 );
 
-// ── 검색 + 필터 바 ──
 const SearchFilter = ({ value, onChange, filters, active, onFilter, activeColor = C.primary }) => (
   <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
     <input placeholder="검색..." value={value} onChange={e => onChange(e.target.value)}
@@ -181,14 +177,19 @@ const SearchFilter = ({ value, onChange, filters, active, onFilter, activeColor 
   </div>
 );
 
-// ── 테이블 래퍼 ──
-const Table = ({ headers, rows }) => (
+// ── 정렬 가능한 테이블 ──
+// [수정 6] 컬럼 클릭 정렬 기능 추가
+const SortableTable = ({ headers, rows, data, sortKey, sortDir, onSort }) => (
   <div style={{ background: C.card, borderRadius: 12, boxShadow: "0 1px 4px rgba(0,0,0,0.06)", overflow: "hidden" }}>
     <table style={{ width: "100%", borderCollapse: "collapse" }}>
       <thead>
         <tr style={{ background: "#F8FAFC", borderBottom: `1px solid ${C.border}` }}>
-          {headers.map(h => (
-            <th key={h} style={{ padding: "12px 20px", textAlign: "left", fontSize: 12, fontWeight: 600, color: C.textMuted, letterSpacing: "0.04em" }}>{h}</th>
+          {headers.map(({ label, key }) => (
+            <th key={label} onClick={() => key && onSort(key)}
+              style={{ padding: "12px 20px", textAlign: "left", fontSize: 12, fontWeight: 600, color: sortKey === key ? C.primary : C.textMuted, letterSpacing: "0.04em", cursor: key ? "pointer" : "default", userSelect: "none", whiteSpace: "nowrap" }}>
+              {label}
+              {key && <span style={{ marginLeft: 4, opacity: sortKey === key ? 1 : 0.3 }}>{sortKey === key ? (sortDir === "asc" ? "↑" : "↓") : "↕"}</span>}
+            </th>
           ))}
         </tr>
       </thead>
@@ -197,12 +198,53 @@ const Table = ({ headers, rows }) => (
   </div>
 );
 
+// ── 정렬 훅 ──
+function useSort(data, defaultKey) {
+  const [sortKey, setSortKey] = useState(defaultKey || "");
+  const [sortDir, setSortDir] = useState("asc");
+
+  const handleSort = (key) => {
+    if (sortKey === key) setSortDir(d => d === "asc" ? "desc" : "asc");
+    else { setSortKey(key); setSortDir("asc"); }
+  };
+
+  const sorted = [...data].sort((a, b) => {
+    if (!sortKey) return 0;
+    const va = a[sortKey] ?? "";
+    const vb = b[sortKey] ?? "";
+    const cmp = String(va).localeCompare(String(vb), "ko");
+    return sortDir === "asc" ? cmp : -cmp;
+  });
+
+  return { sorted, sortKey, sortDir, handleSort };
+}
+
+// ── 이력 생성 헬퍼 ──
+// [수정 1,2,3,5] 이력 생성 로직 중앙화
+function makeHistory(type, asset, prevUser, nextUser, note) {
+  return {
+    id: `H-${Date.now()}-${asset.id}`,
+    assetId: asset.id,
+    assetName: asset.name,
+    type,
+    from: prevUser ?? "-",
+    to: nextUser ?? "-",
+    date: new Date().toISOString().split("T")[0],
+    note: note || "",
+  };
+}
+
 // ── 대시보드 ──
 function Dashboard({ assets, members, history }) {
   const statusData = STATUS_OPTIONS.map(s => ({ name: s, value: assets.filter(a => a.status === s).length }));
   const deptMap = {};
   members.forEach(m => { deptMap[m.department] = (deptMap[m.department] || 0) + 1; });
   const deptData = Object.entries(deptMap).map(([name, value]) => ({ name, value }));
+
+  // [수정 5] 배정/반납/입고 타입만 필터해서 최신 5개 표시
+  const recentHistory = history
+    .filter(h => ["배정", "반납", "입고"].includes(h.type))
+    .slice(0, 5);
 
   return (
     <main style={{ flex: 1, padding: "36px 40px", overflowY: "auto" }}>
@@ -260,9 +302,9 @@ function Dashboard({ assets, members, history }) {
 
       <div style={{ background: C.card, borderRadius: 12, padding: 24, boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}>
         <h3 style={{ margin: "0 0 16px", fontSize: 15, fontWeight: 700, color: C.text }}>최근 배정/반납 이력</h3>
-        {history.length === 0
+        {recentHistory.length === 0
           ? <p style={{ margin: 0, fontSize: 13, color: C.textLight }}>이력 없음</p>
-          : history.slice(-5).reverse().map(h => (
+          : recentHistory.map(h => (
             <div key={h.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0", borderBottom: `1px solid ${C.bg}` }}>
               <HistoryBadge type={h.type} />
               <span style={{ fontSize: 14, color: C.text, fontWeight: 500, flex: 1 }}>{h.assetName}</span>
@@ -277,51 +319,115 @@ function Dashboard({ assets, members, history }) {
 }
 
 // ── 자산관리 ──
-function AssetPage({ assets, setAssets, history, setHistory }) {
+function AssetPage({ assets, setAssets, history, members }) {
   const [addOpen, setAddOpen] = useState(false);
-  const [form, setForm] = useState({ name: "", location: "" });
+  const [form, setForm] = useState({ name: "", location: "", user: "" });
   const [selected, setSelected] = useState(null);
   const [editMode, setEditMode] = useState(false);
   const [editForm, setEditForm] = useState({});
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState("전체");
 
-  const filtered = assets.filter(a => {
+  // [수정 6] 정렬
+  const memberNames = members.map(m => m.name);
+
+  const base = assets.filter(a => {
     const matchStatus = filterStatus === "전체" || a.status === filterStatus;
-    const matchSearch = [a.name, a.user, a.location].some(v => v.toLowerCase().includes(search.toLowerCase()));
+    const matchSearch = [a.id, a.name, a.user, a.location].some(v => v?.toLowerCase().includes(search.toLowerCase()));
     return matchStatus && matchSearch;
   });
+  const { sorted: filtered, sortKey, sortDir, handleSort } = useSort(base, "date");
 
+  // [수정 3] 신규 등록 시 사용자 지정 + 이력 기록
   const addAsset = () => {
     if (!form.name || !form.location) return;
-    setAssets([...assets, { id: "A" + Math.floor(Math.random() * 10000), name: form.name, status: "미사용", user: "-", date: new Date().toISOString().slice(0, 10), location: form.location }]);
+    // [수정 4] 구성원 목록에 없는 사용자 차단
+    if (form.user && !memberNames.includes(form.user)) {
+      alert(`'${form.user}'은(는) 구성원 목록에 없는 사용자입니다.\n구성원 관리에서 먼저 등록해주세요.`);
+      return;
+    }
+    const newAsset = {
+      id: "A" + Math.floor(Math.random() * 90000 + 10000),
+      name: form.name,
+      status: form.user ? "사용중" : "미사용",
+      user: form.user || "-",
+      date: new Date().toISOString().slice(0, 10),
+      location: form.location,
+    };
+    // 입고 이력 + 사용자 있으면 배정 이력도 함께
+    const histories = [makeHistory("입고", newAsset, "-", "-", "신규 자산 시스템 입고")];
+    if (form.user) histories.push(makeHistory("배정", newAsset, "-", form.user, "신규 등록 시 배정"));
+    setAssets([...assets, newAsset], histories);
     setAddOpen(false);
-    setForm({ name: "", location: "" });
+    setForm({ name: "", location: "", user: "" });
   };
 
+  // [수정 1,2] 수정 저장 - 상태/사용자 변경에 따른 자동 처리
   const saveEdit = () => {
     const prev = assets.find(a => a.id === editForm.id);
-    if (prev.user !== editForm.user) {
-      setHistory(h => [...h, {
-        id: "H" + Date.now(), assetId: editForm.id, assetName: editForm.name,
-        type: editForm.user === "-" ? "반납" : "배정",
-        from: prev.user, to: editForm.user,
-        date: new Date().toISOString().slice(0, 10),
-        note: editForm.user === "-" ? "반납 처리" : "배정 처리",
-      }]);
+    let updated = { ...editForm };
+    const histories = [];
+
+    const userChanged = prev.user !== updated.user;
+    const statusChanged = prev.status !== updated.status;
+
+    // [수정 4] 구성원 목록에 없는 사용자 차단
+    if (updated.user && updated.user !== "-" && !memberNames.includes(updated.user)) {
+      alert(`'${updated.user}'은(는) 구성원 목록에 없는 사용자입니다.\n구성원 관리에서 먼저 등록해주세요.`);
+      return;
     }
-    setAssets(assets.map(a => a.id === editForm.id ? editForm : a));
-    setSelected(editForm);
+
+    // [수정 1] 미사용으로 변경 시 사용자 자동 초기화
+    if (updated.status === "미사용" && updated.user !== "-") {
+      const prevUser = updated.user;
+      updated.user = "-";
+      histories.push(makeHistory("반납", updated, prevUser, "-", "미사용 처리로 인한 자동 반납"));
+    }
+    // [수정 1] 수리중으로 변경 시 사용자 자동 초기화
+    else if (updated.status === "수리중" && updated.user !== "-") {
+      const prevUser = updated.user;
+      updated.user = "-";
+      histories.push(makeHistory("반납", updated, prevUser, "-", "수리 입고로 인한 자동 반납"));
+    }
+    // 사용자만 변경된 경우
+    else if (userChanged && updated.status !== "미사용" && updated.status !== "수리중") {
+      if (prev.user === "-" && updated.user !== "-") {
+        histories.push(makeHistory("배정", updated, "-", updated.user, `${updated.user}에게 배정`));
+      } else if (prev.user !== "-" && updated.user === "-") {
+        histories.push(makeHistory("반납", updated, prev.user, "-", "사용자 반납 처리"));
+      } else if (prev.user !== "-" && updated.user !== "-") {
+        histories.push(makeHistory("반납", updated, prev.user, "-", `${prev.user} → ${updated.user} 사용자 변경`));
+        histories.push(makeHistory("배정", updated, "-", updated.user, `${prev.user}에서 ${updated.user}으로 재배정`));
+      }
+    }
+    // 상태만 변경된 경우
+    else if (statusChanged && !userChanged) {
+      histories.push(makeHistory("상태변경", updated, updated.user, updated.user, `${prev.status} → ${updated.status}`));
+    }
+
+    setAssets(assets.map(a => a.id === updated.id ? updated : a), histories);
+    setSelected(updated);
     setEditMode(false);
   };
 
   const deleteAsset = () => {
     if (!window.confirm(`'${selected.name}'을(를) 삭제할까요?`)) return;
-    setAssets(assets.filter(a => a.id !== selected.id));
+    setAssets(assets.filter(a => a.id !== selected.id), []);
     setSelected(null);
   };
 
-  const assetHistory = selected ? history.filter(h => h.assetId === selected.id) : [];
+  const assetHistory = selected
+    ? history.filter(h => h.assetId === selected.id).sort((a, b) => b.date.localeCompare(a.date))
+    : [];
+
+  const ASSET_HEADERS = [
+    { label: "자산번호", key: "id" },
+    { label: "자산명", key: "name" },
+    { label: "상태", key: "status" },
+    { label: "사용자", key: "user" },
+    { label: "위치", key: "location" },
+    { label: "등록일", key: "date" },
+  ];
 
   return (
     <main style={{ flex: 1, padding: "36px 40px", overflowY: "auto" }}>
@@ -334,16 +440,21 @@ function AssetPage({ assets, setAssets, history, setHistory }) {
       ]} />
       <SearchFilter value={search} onChange={setSearch}
         filters={["전체", "사용중", "미사용", "수리중"]} active={filterStatus} onFilter={setFilterStatus} />
-      <Table
-        headers={["자산번호", "자산명", "상태", "사용자", "위치", "등록일"]}
+
+      <SortableTable
+        headers={ASSET_HEADERS}
+        sortKey={sortKey} sortDir={sortDir} onSort={handleSort}
         rows={filtered.map((a, i) => (
           <tr key={a.id} onClick={() => { setSelected(a); setEditMode(false); }}
             style={{ borderBottom: i < filtered.length - 1 ? `1px solid ${C.bg}` : "none", cursor: "pointer" }}
             onMouseEnter={e => e.currentTarget.style.background = "#F8FAFC"}
             onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
-            {[a.id, a.name, <StatusBadge status={a.status} />, a.user, a.location, a.date].map((val, j) => (
-              <td key={j} style={{ padding: "14px 20px", fontSize: 14, color: C.text }}>{val}</td>
-            ))}
+            <td style={{ padding: "14px 20px", fontSize: 14, color: C.text }}>{a.id}</td>
+            <td style={{ padding: "14px 20px", fontSize: 14, color: C.text }}>{a.name}</td>
+            <td style={{ padding: "14px 20px" }}><StatusBadge status={a.status} /></td>
+            <td style={{ padding: "14px 20px", fontSize: 14, color: C.text }}>{a.user}</td>
+            <td style={{ padding: "14px 20px", fontSize: 14, color: C.text }}>{a.location}</td>
+            <td style={{ padding: "14px 20px", fontSize: 14, color: C.text }}>{a.date}</td>
           </tr>
         ))}
       />
@@ -353,6 +464,15 @@ function AssetPage({ assets, setAssets, history, setHistory }) {
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
             <InputField label="자산명" value={form.name} onChange={v => setForm({ ...form, name: v })} />
             <InputField label="위치" value={form.location} onChange={v => setForm({ ...form, location: v })} />
+            {/* [수정 4] 사용자 입력 시 구성원 목록에서 선택 */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <label style={{ fontSize: 12, color: C.textMuted, fontWeight: 600 }}>사용자 (없으면 비워두세요)</label>
+              <select value={form.user} onChange={e => setForm({ ...form, user: e.target.value })}
+                style={{ border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 12px", fontSize: 14, color: C.text, outline: "none", background: "#fff" }}>
+                <option value="">미배정</option>
+                {members.map(m => <option key={m.id} value={m.name}>{m.name} ({m.department})</option>)}
+              </select>
+            </div>
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 8 }}>
               <Btn variant="ghost" onClick={() => setAddOpen(false)}>취소</Btn>
               <Btn onClick={addAsset}>등록</Btn>
@@ -365,10 +485,24 @@ function AssetPage({ assets, setAssets, history, setHistory }) {
         <Modal title={editMode ? "자산 수정" : "자산 상세"} onClose={() => setSelected(null)} wide>
           {editMode ? (
             <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-              {[{ label: "자산명", key: "name" }, { label: "사용자", key: "user" }, { label: "위치", key: "location" }].map(({ label, key }) => (
-                <InputField key={key} label={label} value={editForm[key]} onChange={v => setEditForm({ ...editForm, [key]: v })} />
-              ))}
+              <InputField label="자산명" value={editForm.name} onChange={v => setEditForm({ ...editForm, name: v })} />
+              {/* [수정 4] 수정 시에도 구성원 목록에서 선택 */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <label style={{ fontSize: 12, color: C.textMuted, fontWeight: 600 }}>사용자</label>
+                <select value={editForm.user === "-" ? "" : editForm.user}
+                  onChange={e => setEditForm({ ...editForm, user: e.target.value || "-" })}
+                  style={{ border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 12px", fontSize: 14, color: C.text, outline: "none", background: "#fff" }}>
+                  <option value="">미배정 (-)</option>
+                  {members.map(m => <option key={m.id} value={m.name}>{m.name} ({m.department})</option>)}
+                </select>
+              </div>
+              <InputField label="위치" value={editForm.location} onChange={v => setEditForm({ ...editForm, location: v })} />
               <SelectField label="상태" value={editForm.status} onChange={v => setEditForm({ ...editForm, status: v })} options={STATUS_OPTIONS} />
+              {(editForm.status === "미사용" || editForm.status === "수리중") && editForm.user !== "-" && (
+                <div style={{ background: "#FEF3C7", borderRadius: 8, padding: "10px 14px", fontSize: 13, color: "#92400E" }}>
+                  ⚠️ 상태를 '{editForm.status}'으로 변경하면 사용자가 자동으로 초기화됩니다.
+                </div>
+              )}
               <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 8 }}>
                 <Btn variant="ghost" onClick={() => setEditMode(false)}>취소</Btn>
                 <Btn onClick={saveEdit}>저장</Btn>
@@ -389,7 +523,7 @@ function AssetPage({ assets, setAssets, history, setHistory }) {
               <div style={{ background: C.bg, borderRadius: 10, padding: 16, marginBottom: 20 }}>
                 <p style={{ margin: "0 0 12px", fontSize: 13, fontWeight: 600, color: "#475569" }}>배정/반납 이력</p>
                 {assetHistory.length > 0
-                  ? assetHistory.slice().reverse().map(h => (
+                  ? assetHistory.map(h => (
                     <div key={h.id} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
                       <HistoryBadge type={h.type} />
                       <span style={{ fontSize: 13, color: "#475569", flex: 1 }}>{h.from} → {h.to}</span>
@@ -412,7 +546,7 @@ function AssetPage({ assets, setAssets, history, setHistory }) {
 }
 
 // ── 구성원 관리 ──
-function MemberPage({ members, setMembers, assets }) {
+function MemberPage({ members, setMembers, assets, setAssets }) {
   const [addOpen, setAddOpen] = useState(false);
   const [selected, setSelected] = useState(null);
   const [editMode, setEditMode] = useState(false);
@@ -429,18 +563,24 @@ function MemberPage({ members, setMembers, assets }) {
 
   const addMember = () => {
     if (!form.name || !form.email) return;
-    setMembers([...members, { id: "M" + Math.floor(Math.random() * 10000), ...form }]);
+    setMembers([...members, { id: "M" + Math.floor(Math.random() * 90000 + 10000), ...form }]);
     setAddOpen(false);
     setForm({ name: "", department: DEPARTMENTS[0], email: "", role: "팀원" });
   };
 
   const saveMember = () => {
     setMembers(members.map(m => m.id === editForm.id ? editForm : m));
-    setSelected(editForm); setEditMode(false);
+    setSelected(editForm);
+    setEditMode(false);
   };
 
+  // [수정 5] 구성원 삭제 시 배정 자산 자동 미배정 처리
   const deleteMember = () => {
-    if (!window.confirm(`'${selected.name}'을(를) 삭제할까요?`)) return;
+    if (!window.confirm(`'${selected.name}'을(를) 삭제할까요?\n이 구성원에게 배정된 자산은 자동으로 미배정(미사용) 처리됩니다.`)) return;
+    const updatedAssets = assets.map(a =>
+      a.user === selected.name ? { ...a, user: "-", status: "미사용" } : a
+    );
+    setAssets(updatedAssets, []);
     setMembers(members.filter(m => m.id !== selected.id));
     setSelected(null);
   };
@@ -561,11 +701,24 @@ function HistoryPage({ history }) {
   const [filterType, setFilterType] = useState("전체");
   const [search, setSearch] = useState("");
 
-  const filtered = history.filter(h => {
+  const base = history.filter(h => {
     const matchType = filterType === "전체" || h.type === filterType;
-    const matchSearch = [h.assetName, h.from, h.to, h.note].some(v => v?.toLowerCase().includes(search.toLowerCase()));
+    const matchSearch = [h.assetName, h.assetId, h.from, h.to, h.note].some(v =>
+      v?.toLowerCase().includes(search.toLowerCase())
+    );
     return matchType && matchSearch;
-  }).slice().reverse();
+  });
+
+  const { sorted: filtered, sortKey, sortDir, handleSort } = useSort(base, "date");
+
+  const HISTORY_HEADERS = [
+    { label: "구분", key: "type" },
+    { label: "자산명", key: "assetName" },
+    { label: "이전 사용자", key: "from" },
+    { label: "변경 후 사용자", key: "to" },
+    { label: "메모", key: "note" },
+    { label: "날짜", key: "date" },
+  ];
 
   return (
     <main style={{ flex: 1, padding: "36px 40px", overflowY: "auto" }}>
@@ -574,11 +727,13 @@ function HistoryPage({ history }) {
         { label: "전체 이력", value: history.length, color: C.primary },
         { label: "배정", value: history.filter(h => h.type === "배정").length, color: "#1D4ED8" },
         { label: "반납", value: history.filter(h => h.type === "반납").length, color: "#92400E" },
+        { label: "입고", value: history.filter(h => h.type === "입고").length, color: "#065F46" },
       ]} />
       <SearchFilter value={search} onChange={setSearch}
-        filters={["전체", "배정", "반납"]} active={filterType} onFilter={setFilterType} />
-      <Table
-        headers={["구분", "자산명", "이전 사용자", "변경 후 사용자", "메모", "날짜"]}
+        filters={HISTORY_TYPES} active={filterType} onFilter={setFilterType} />
+      <SortableTable
+        headers={HISTORY_HEADERS}
+        sortKey={sortKey} sortDir={sortDir} onSort={handleSort}
         rows={filtered.length > 0
           ? filtered.map((h, i) => (
             <tr key={h.id} style={{ borderBottom: i < filtered.length - 1 ? `1px solid ${C.bg}` : "none" }}
@@ -601,41 +756,41 @@ function HistoryPage({ history }) {
 
 // ── 메인 App ──
 export default function App() {
-
-  // --- 인증 관련 상태 추가 ---
   const [session, setSession] = useState(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [authLoading, setAuthLoading] = useState(false);
-
-  const [assets, setAssets] = useState([]);
-  const [members, setMembers] = useState([]);
-  const [history, setHistory] = useState([]);
+  const [assets, setAssetsState] = useState([]);
+  const [members, setMembersState] = useState([]);
+  const [history, setHistoryState] = useState([]);
   const [page, setPage] = useState("dashboard");
   const [loading, setLoading] = useState(true);
 
-  // ── 데이터 불러오기 ──
-  useEffect(() => {
-    // 세션 감지 추가
-    supabase.auth.getSession().then(({ data: { session } }) => setSession(session));
-    supabase.auth.onAuthStateChange((_event, session) => setSession(session));
+  const fetchAll = async () => {
+    setLoading(true);
+    const [{ data: a }, { data: m }, { data: h }] = await Promise.all([
+      supabase.from("assets").select("*"),
+      supabase.from("members").select("*"),
+      supabase.from("history").select("*").order("date", { ascending: false }),
+    ]);
+    setAssetsState(a || []);
+    setMembersState(m || []);
+    setHistoryState(h || []);
+    setLoading(false);
+  };
 
-    const fetchAll = async () => {
-      setLoading(true);
-      const [{ data: a }, { data: m }, { data: h }] = await Promise.all([
-        supabase.from("assets").select("*"),
-        supabase.from("members").select("*"),
-        supabase.from("history").select("*").order("date", { ascending: true }),
-      ]);
-      setAssets(a || []);
-      setMembers(m || []);
-      setHistory(h || []);
-      setLoading(false);
-    };
-    fetchAll();
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      if (session) fetchAll();
+      else setLoading(false);
+    });
+    supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+      if (session) fetchAll();
+    });
   }, []);
 
-  // 로그인 처리 함수 추가
   const handleLogin = async (e) => {
     e.preventDefault();
     setAuthLoading(true);
@@ -645,26 +800,34 @@ export default function App() {
   };
 
   // ── assets 변경 시 Supabase 동기화 ──
-  const updateAssets = async (newAssets) => {
-    setAssets(newAssets);
+  // histories: makeHistory()로 만든 이력 배열을 함께 전달
+  const updateAssets = async (newAssets, histories = []) => {
+    setAssetsState(newAssets);
     const prev = assets;
-    // 추가된 항목
-    const added = newAssets.filter(n => !prev.find(p => p.id === n.id));
-    // 삭제된 항목
+
+    const added   = newAssets.filter(n => !prev.find(p => p.id === n.id));
     const removed = prev.filter(p => !newAssets.find(n => n.id === p.id));
-    // 수정된 항목
     const updated = newAssets.filter(n => {
       const old = prev.find(p => p.id === n.id);
       return old && JSON.stringify(old) !== JSON.stringify(n);
     });
+
     if (added.length)   await supabase.from("assets").insert(added);
     if (removed.length) await supabase.from("assets").delete().in("id", removed.map(r => r.id));
     if (updated.length) await Promise.all(updated.map(u => supabase.from("assets").update(u).eq("id", u.id)));
+
+    // 이력 저장
+    if (histories.length > 0) {
+      await supabase.from("history").insert(histories);
+      // 최신 이력 다시 불러오기
+      const { data: hData } = await supabase.from("history").select("*").order("date", { ascending: false });
+      if (hData) setHistoryState(hData);
+    }
   };
 
   // ── members 변경 시 Supabase 동기화 ──
   const updateMembers = async (newMembers) => {
-    setMembers(newMembers);
+    setMembersState(newMembers);
     const prev = members;
     const added   = newMembers.filter(n => !prev.find(p => p.id === n.id));
     const removed = prev.filter(p => !newMembers.find(n => n.id === p.id));
@@ -675,15 +838,6 @@ export default function App() {
     if (added.length)   await supabase.from("members").insert(added);
     if (removed.length) await supabase.from("members").delete().in("id", removed.map(r => r.id));
     if (updated.length) await Promise.all(updated.map(u => supabase.from("members").update(u).eq("id", u.id)));
-  };
-
-  // ── history 변경 시 Supabase 동기화 ──
-  const updateHistory = async (newHistory) => {
-    setHistory(newHistory);
-    const prev = history;
-    const added = typeof newHistory === "function"
-      ? [] : newHistory.filter(n => !prev.find(p => p.id === n.id));
-    if (added.length) await supabase.from("history").insert(added);
   };
 
   const menuItems = [
@@ -701,14 +855,13 @@ export default function App() {
     </div>
   );
 
-  // --- 로그인 화면 추가 ---
   if (!session) {
     return (
-      <div style={{ 
+      <div style={{
         height: "100vh", display: "flex", alignItems: "center", justifyContent: "center",
         background: "linear-gradient(135deg, #0F172A 0%, #1E293B 100%)", fontFamily: "'Pretendard', sans-serif"
       }}>
-        <div style={{ 
+        <div style={{
           width: "100%", maxWidth: 400, padding: 40, borderRadius: 24,
           background: "rgba(255, 255, 255, 0.05)", backdropFilter: "blur(12px)",
           border: "1px solid rgba(255, 255, 255, 0.1)", textAlign: "center",
@@ -719,17 +872,16 @@ export default function App() {
             <h1 style={{ color: "#fff", fontSize: 26, fontWeight: 800, margin: 0, letterSpacing: "-0.5px" }}>DURAE Assets</h1>
             <p style={{ color: "rgba(255,255,255,0.4)", fontSize: 14, marginTop: 10, fontWeight: 500 }}>Admin Authentication</p>
           </div>
-          
           <form onSubmit={handleLogin} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            <input 
+            <input
               type="email" placeholder="Admin Email" value={email} onChange={e => setEmail(e.target.value)}
               style={{ width: "100%", padding: "16px 20px", borderRadius: 14, border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.05)", color: "#fff", fontSize: 15, outline: "none" }}
             />
-            <input 
+            <input
               type="password" placeholder="Password" value={password} onChange={e => setPassword(e.target.value)}
               style={{ width: "100%", padding: "16px 20px", borderRadius: 14, border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.05)", color: "#fff", fontSize: 15, outline: "none" }}
             />
-            <button 
+            <button
               disabled={authLoading}
               style={{ width: "100%", padding: "16px", borderRadius: 14, border: "none", background: C.primary, color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 16, marginTop: 12, transition: "transform 0.2s" }}
               onMouseEnter={e => e.target.style.transform = "scale(1.02)"}
@@ -769,8 +921,7 @@ export default function App() {
           })}
         </nav>
         <div style={{ padding: "16px 20px", borderTop: "1px solid rgba(255,255,255,0.06)" }}>
-          {/* 로그아웃 버튼 추가 */}
-          <button 
+          <button
             onClick={() => supabase.auth.signOut()}
             style={{ width: "100%", padding: "8px", background: "rgba(239,68,68,0.1)", color: C.danger, border: "none", borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: "pointer", marginBottom: 12 }}
           >
@@ -781,8 +932,8 @@ export default function App() {
       </aside>
 
       {page === "dashboard" && <Dashboard assets={assets} members={members} history={history} />}
-      {page === "assets"    && <AssetPage assets={assets} setAssets={updateAssets} history={history} setHistory={updateHistory} />}
-      {page === "members"   && <MemberPage members={members} setMembers={updateMembers} assets={assets} />}
+      {page === "assets"    && <AssetPage assets={assets} setAssets={updateAssets} history={history} members={members} />}
+      {page === "members"   && <MemberPage members={members} setMembers={updateMembers} assets={assets} setAssets={updateAssets} />}
       {page === "history"   && <HistoryPage history={history} />}
     </div>
   );
