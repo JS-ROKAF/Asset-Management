@@ -9,12 +9,13 @@ import { exportToExcel } from "./exportExcel";
 const DEPARTMENTS = ["개발팀", "디자인팀", "마케팅팀", "HR팀", "경영지원팀"];
 const STATUS_OPTIONS = ["사용중", "미사용", "수리중"];
 const STATUS_COLORS = { "사용중": "#10B981", "미사용": "#94A3B8", "수리중": "#EF4444" };
-const HISTORY_TYPES = ["전체", "배정", "반납", "입고", "상태변경"];
+const HISTORY_TYPES = ["전체", "배정", "반납", "입고", "상태변경", "폐기"];
 const HISTORY_STYLES = {
   "배정":    { background: "#DBEAFE", color: "#1D4ED8" },
   "반납":    { background: "#FEF3C7", color: "#92400E" },
   "입고":    { background: "#D1FAE5", color: "#065F46" },
   "상태변경": { background: "#F3F0FF", color: "#6D28D9" },
+  "폐기":    { background: "#FEE2E2", color: "#991B1B" },
 };
 const ASSET_TYPES = ["노트북", "스마트폰", "태블릿", "모니터", "키보드/마우스", "헤드셋", "기타"];
 // 사용자 표시용 헬퍼 — "-"를 "미배정"으로 변환
@@ -155,7 +156,7 @@ const PageHeader = ({ title, subtitle, action }) => (
 );
 
 const SummaryCards = ({ items }) => (
-  <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.min(items.length, 5)}, 1fr)`, gap: 12, marginBottom: 28 }}>
+  <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.min(items.length, 6)}, 1fr)`, gap: 12, marginBottom: 28 }}>
     {items.map(({ label, value, color }) => (
       <div key={label} style={{ background: C.card, borderRadius: 12, padding: "16px 20px", boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}>
         <p style={{ margin: 0, fontSize: 12, color: C.textLight, fontWeight: 500 }}>{label}</p>
@@ -270,17 +271,26 @@ function useSort(data, defaultKey, defaultDir = "desc") {
   return { sorted, sortKey, sortDir, handleSort };
 }
 
-// ── 이력 생성 헬퍼 ──
-// [수정 1,2,3,5] 이력 생성 로직 중앙화
-function makeHistory(type, asset, prevUser, nextUser, note) {
+// 날짜 표시 헬퍼 — 레거시(연월일) + 신규(연월일 시분초) 모두 처리
+const displayDate = (dateStr) => {
+  if (!dateStr) return "-";
+  // 이미 시분초가 있으면 그대로 반환
+  if (dateStr.length >= 16) return dateStr.slice(0, 16); // 'YYYY-MM-DD HH:mm'
+  return dateStr; // 'YYYY-MM-DD' 형식 레거시 그대로
+};
+
+const toKST = (offsetMs = 0) =>
+  new Date(Date.now() + 9 * 60 * 60 * 1000 + offsetMs)
+    .toISOString().replace('T', ' ').slice(0, 23); // 밀리초까지 포함
+
+function makeHistory(type, asset, prevUser, nextUser, note, offsetMs = 0) {
   return {
-    id: `H-${Date.now()}-${asset.id}`,
     assetId: asset.id,
     assetName: asset.name,
     type,
     from: prevUser ?? "-",
     to: nextUser ?? "-",
-    date: new Date().toISOString().split("T")[0],
+    date: toKST(offsetMs),
     note: note || "",
   };
 }
@@ -361,7 +371,7 @@ function Dashboard({ assets, members, history }) {
               <HistoryBadge type={h.type} />
               <span style={{ fontSize: 14, color: C.text, fontWeight: 500, flex: 1 }}>{h.assetName}</span>
               <span style={{ fontSize: 13, color: C.textMuted }}>{displayUser(h.from)} → {displayUser(h.to)}</span>
-              <span style={{ fontSize: 12, color: C.textLight }}>{h.date}</span>
+              <span style={{ fontSize: 12, color: C.textLight }}>{displayDate(h.date)}</span>
             </div>
           ))
         }
@@ -373,69 +383,82 @@ function Dashboard({ assets, members, history }) {
 // ── 자산관리 ──
 function AssetPage({ assets, setAssets, history, members }) {
   const [addOpen, setAddOpen] = useState(false);
-  const [form, setForm] = useState({ name: "", location: "", user: "", type: "기타" });
+  const [form, setForm] = useState({
+    name: "", type: "기타", location: "", user: "",
+    acquisitionDate: "", acquisitionCost: "", vendor: "",
+    department: "", note: "", quantity: 1,
+  });
   const [selected, setSelected] = useState(null);
   const [editMode, setEditMode] = useState(false);
   const [editForm, setEditForm] = useState({});
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState("전체");
+  const [filterDept, setFilterDept] = useState("전체");
   const [currentPage, setCurrentPage] = useState(1);
   const PER_PAGE = 15;
   const memberNames = members.map(m => m.name);
 
-  // 검색이나 필터 변경 시 1페이지로 초기화
-  useEffect(() => { setCurrentPage(1); }, [search, filterStatus]);
+  useEffect(() => { setCurrentPage(1); }, [search, filterStatus, filterDept]);
 
   const base = assets.filter(a => {
     const matchStatus = filterStatus === "전체" || a.status === filterStatus;
-    const matchSearch = [a.id, a.name, a.user, a.location].some(v => v?.toLowerCase().includes(search.toLowerCase()));
-    return matchStatus && matchSearch;
+    const matchDept = filterDept === "전체" || a.department === filterDept;
+    const matchSearch = [a.id, a.name, a.user, a.location, a.department, a.vendor, a.note]
+      .some(v => v?.toLowerCase().includes(search.toLowerCase()));
+    return matchStatus && matchDept && matchSearch;
   });
   const { sorted, sortKey, sortDir, handleSort } = useSort(base, "date");
   const totalFiltered = sorted.length;
   const filtered = sorted.slice((currentPage - 1) * PER_PAGE, currentPage * PER_PAGE);
-  
+
   const addAsset = () => {
     if (!form.name || !form.location) return;
-
-    // "미배정"을 기본값으로 처리하는 로직
+    const qty = Math.max(1, parseInt(form.quantity) || 1);
     const isAssigned = form.user && form.user !== "";
-
-    // 구성원 목록 확인
     if (isAssigned && !memberNames.includes(form.user)) {
       alert(`'${form.user}'은(는) 구성원 목록에 없는 사용자입니다.`);
       return;
     }
-
-    const newAsset = {
-      id: "A" + Math.floor(Math.random() * 90000 + 10000),
-      name: form.name,
-      type: form.type || "기타",   // ← 추가
-      status: isAssigned ? "사용중" : "미사용",
-      user: isAssigned ? form.user : "-",
-      date: new Date().toISOString().slice(0, 10),
-      location: form.location,
-    };
-
-    const histories = [];
-    
-    // 1. [입고] 이력 생성 (항상 생성)
-    histories.push(makeHistory("입고", newAsset, "-", "-", "신규 자산 시스템 입고"));
-
-    // 2. [배정] 이력 생성 (사용자가 지정된 경우만)
-    if (isAssigned) {
-      histories.push(makeHistory("배정", newAsset, "-", form.user, "신규 등록 시 즉시 배정"));
+    // 수량이 2 이상인데 사용자를 지정하면 경고
+    if (qty > 1 && isAssigned) {
+      alert("수량이 2개 이상일 때는 사용자를 지정할 수 없습니다.\n등록 후 각 자산에 개별 배정해 주세요.");
+      return;
     }
 
-    // 데이터 반영 (App.jsx의 updateAssets 호출)
-    setAssets([...assets, newAsset], histories); 
-    
-    // 폼 초기화 및 닫기
+    const newAssets = [];
+    const histories = [];
+
+    for (let i = 0; i < qty; i++) {
+      const newAsset = {
+        id: "A" + Math.floor(Math.random() * 900000 + 100000),
+        name: form.name,
+        type: form.type || "기타",
+        status: isAssigned ? "사용중" : "미사용",
+        user: isAssigned ? form.user : "-",
+        department: form.department || "-",
+        location: form.location,
+        acquisitionDate: form.acquisitionDate || "-",
+        acquisitionCost: form.acquisitionCost || "-",
+        vendor: form.vendor || "-",
+        note: form.note || "-",
+        date: toKST(i), // 수량이 여러 개일 때 ms 차이로 순서 보장
+      };
+      newAssets.push(newAsset);
+      histories.push(makeHistory("입고", newAsset, "-", "-", `신규 자산 시스템 입고${qty > 1 ? ` (${i + 1}/${qty})` : ""}`, i * 2));
+      if (isAssigned) {
+        histories.push(makeHistory("배정", newAsset, "-", form.user, "신규 등록 시 즉시 배정", i * 2 + 1));
+      }
+    }
+
+    setAssets([...assets, ...newAssets], histories);
     setAddOpen(false);
-    setForm({ name: "", location: "", user: "", type: "기타" });
+    setForm({
+      name: "", type: "기타", location: "", user: "",
+      acquisitionDate: "", acquisitionCost: "", vendor: "",
+      department: "", note: "", quantity: 1,
+    });
   };
 
-  // [수정 1,2] 수정 저장 - 상태/사용자 변경에 따른 자동 처리
   const saveEdit = () => {
     const prev = assets.find(a => a.id === editForm.id);
     let updated = { ...editForm };
@@ -444,37 +467,29 @@ function AssetPage({ assets, setAssets, history, members }) {
     const userChanged = prev.user !== updated.user;
     const statusChanged = prev.status !== updated.status;
 
-    // [수정 4] 구성원 목록에 없는 사용자 차단
     if (updated.user && updated.user !== "-" && updated.user !== "미배정" && !memberNames.includes(updated.user)) {
       alert(`'${updated.user}'은(는) 구성원 목록에 없는 사용자입니다.\n구성원 관리에서 먼저 등록해주세요.`);
       return;
     }
 
-    // [수정 1] 미사용으로 변경 시 사용자 자동 초기화
     if (updated.status === "미사용" && updated.user !== "-" && updated.user !== "미배정") {
       const prevUser = updated.user;
       updated.user = "-";
       histories.push(makeHistory("반납", updated, prevUser, "-", "미사용 처리로 인한 자동 반납"));
-    }
-    // [수정 1] 수리중으로 변경 시 사용자 자동 초기화
-    else if (updated.status === "수리중" && updated.user !== "-" && updated.user !== "미배정") {
+    } else if (updated.status === "수리중" && updated.user !== "-" && updated.user !== "미배정") {
       const prevUser = updated.user;
       updated.user = "-";
       histories.push(makeHistory("반납", updated, prevUser, "-", "수리 입고로 인한 자동 반납"));
-    }
-    // 사용자만 변경된 경우
-    else if (userChanged && updated.status !== "미사용" && updated.status !== "수리중") {
+    } else if (userChanged && updated.status !== "미사용" && updated.status !== "수리중") {
       if (prev.user === "-" && updated.user !== "-") {
         histories.push(makeHistory("배정", updated, "-", updated.user, `${updated.user}에게 배정`));
       } else if (prev.user !== "-" && updated.user === "-") {
         histories.push(makeHistory("반납", updated, prev.user, "-", "사용자 반납 처리"));
       } else if (prev.user !== "-" && updated.user !== "-") {
-        histories.push(makeHistory("반납", updated, prev.user, "-", `${prev.user} → ${updated.user} 사용자 변경`));
-        histories.push(makeHistory("배정", updated, "-", updated.user, `${prev.user}에서 ${updated.user}으로 재배정`));
+        histories.push(makeHistory("반납", updated, prev.user, "-", `${prev.user} → ${updated.user} 사용자 변경`, 0));
+        histories.push(makeHistory("배정", updated, "-", updated.user, `${prev.user}에서 ${updated.user}으로 재배정`, 1));
       }
-    }
-    // 상태만 변경된 경우
-    else if (statusChanged && !userChanged) {
+    } else if (statusChanged && !userChanged) {
       histories.push(makeHistory("상태변경", updated, updated.user, updated.user, `${prev.status} → ${updated.status}`));
     }
 
@@ -485,23 +500,44 @@ function AssetPage({ assets, setAssets, history, members }) {
 
   const deleteAsset = () => {
     if (!window.confirm(`'${selected.name}'을(를) 삭제할까요?`)) return;
-    setAssets(assets.filter(a => a.id !== selected.id), []);
+    const histories = [];
+    if (selected.user && selected.user !== "-") {
+      histories.push(makeHistory("반납", selected, selected.user, "-", "자산 삭제로 인한 자동 반납", 0));
+    }
+    histories.push(makeHistory("폐기", selected, selected.user ?? "-", "-", "자산 삭제(폐기)", selected.user && selected.user !== "-" ? 1 : 0));
+    setAssets(assets.filter(a => a.id !== selected.id), histories);
     setSelected(null);
   };
 
   const assetHistory = selected
-    ? history.filter(h => h.assetId === selected.id).sort((a, b) => b.date.localeCompare(a.date))
+    ? history.filter(h => h.assetId === selected.id).sort((a, b) => a.date.localeCompare(b.date))
     : [];
 
   const ASSET_HEADERS = [
     { label: "자산번호", key: "id" },
-    { label: "자산명", key: "name" },
     { label: "유형", key: "type" },
-    { label: "상태", key: "status" },
+    { label: "자산명", key: "name" },
+    { label: "사용부서", key: "department" },
     { label: "사용자", key: "user" },
+    { label: "상태", key: "status" },
     { label: "위치", key: "location" },
     { label: "등록일", key: "date" },
   ];
+
+  // 2단 필터 (상태 + 부서)
+  const deptFilterRow = (
+    <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
+      {["전체", ...DEPARTMENTS].map(d => (
+        <button key={d} onClick={() => setFilterDept(d)}
+          style={{ padding: "9px 16px", borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: "pointer",
+            border: `1px solid ${C.border}`,
+            background: filterDept === d ? C.purple : C.card,
+            color: filterDept === d ? "#fff" : C.textMuted, transition: "all 0.15s" }}>
+          {d}
+        </button>
+      ))}
+    </div>
+  );
 
   return (
     <main style={{ flex: 1, padding: "36px 40px", overflowY: "auto" }}>
@@ -514,8 +550,12 @@ function AssetPage({ assets, setAssets, history, members }) {
         { label: "수리중", value: assets.filter(a => a.status === "수리중").length, color: C.danger },
         { label: "전체 구성원", value: members.length, color: C.purple },
       ]} />
+
+      {/* 상태 필터 */}
       <SearchFilter value={search} onChange={setSearch}
         filters={["전체", "사용중", "미사용", "수리중"]} active={filterStatus} onFilter={setFilterStatus} />
+      {/* 부서 필터 */}
+      {deptFilterRow}
 
       <SortableTable
         headers={ASSET_HEADERS}
@@ -525,34 +565,81 @@ function AssetPage({ assets, setAssets, history, members }) {
             style={{ borderBottom: i < filtered.length - 1 ? `1px solid ${C.bg}` : "none", cursor: "pointer" }}
             onMouseEnter={e => e.currentTarget.style.background = "#F8FAFC"}
             onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
-            <td style={{ padding: "14px 20px", fontSize: 14, color: C.text }}>{a.id}</td>
-            <td style={{ padding: "14px 20px", fontSize: 14, color: C.text }}>{a.name}</td>
+            <td style={{ padding: "14px 20px", fontSize: 13, color: C.textMuted }}>{a.id}</td>
             <td style={{ padding: "14px 20px", fontSize: 14, color: C.textMuted }}>{a.type || "기타"}</td>
-            <td style={{ padding: "14px 20px" }}><StatusBadge status={a.status} /></td>
+            <td style={{ padding: "14px 20px", fontSize: 14, color: C.text, fontWeight: 500 }}>{a.name}</td>
+            <td style={{ padding: "14px 20px", fontSize: 14, color: C.text }}>{a.department || "-"}</td>
             <td style={{ padding: "14px 20px", fontSize: 14, color: a.user === "-" ? C.textLight : C.text }}>{displayUser(a.user)}</td>
+            <td style={{ padding: "14px 20px" }}><StatusBadge status={a.status} /></td>
             <td style={{ padding: "14px 20px", fontSize: 14, color: C.text }}>{a.location}</td>
-            <td style={{ padding: "14px 20px", fontSize: 14, color: C.text }}>{a.date}</td>
+            <td style={{ padding: "14px 20px", fontSize: 13, color: C.textLight }}>{displayDate(a.date)}</td>
           </tr>
         ))}
       />
-
       <Pagination total={totalFiltered} page={currentPage} perPage={PER_PAGE} onChange={setCurrentPage} />
 
+      {/* 자산 등록 모달 */}
       {addOpen && (
-        <Modal title="자산 등록" onClose={() => setAddOpen(false)}>
+        <Modal title="자산 등록" onClose={() => setAddOpen(false)} wide>
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-            <InputField label="자산명" value={form.name} onChange={v => setForm({ ...form, name: v })} />
-            <SelectField label="유형" value={form.type || "기타"} onChange={v => setForm({ ...form, type: v })} options={ASSET_TYPES} />
-            <InputField label="위치" value={form.location} onChange={v => setForm({ ...form, location: v })} />
-            {/* [수정 4] 사용자 입력 시 구성원 목록에서 선택 */}
+            {/* 1행: 자산명 + 유형 */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <InputField label="자산명 *" value={form.name} onChange={v => setForm({ ...form, name: v })} />
+              <SelectField label="유형" value={form.type} onChange={v => setForm({ ...form, type: v })} options={ASSET_TYPES} />
+            </div>
+            {/* 2행: 수량 + 위치 */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <label style={{ fontSize: 12, color: C.textMuted, fontWeight: 600 }}>수량</label>
+                <input type="number" min="1" max="100" value={form.quantity}
+                  onChange={e => setForm({ ...form, quantity: Math.max(1, parseInt(e.target.value) || 1) })}
+                  style={{ border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 12px", fontSize: 14, color: C.text, outline: "none" }}
+                  onFocus={e => e.target.style.borderColor = C.primary}
+                  onBlur={e => e.target.style.borderColor = C.border}
+                />
+              </div>
+              <InputField label="위치 *" value={form.location} onChange={v => setForm({ ...form, location: v })} />
+            </div>
+            {/* 3행: 취득일자 + 취득금액 */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <InputField label="취득일자" value={form.acquisitionDate} onChange={v => setForm({ ...form, acquisitionDate: v })} placeholder="예: 2024-01-01" />
+              <InputField label="취득금액 (원)" value={form.acquisitionCost} onChange={v => setForm({ ...form, acquisitionCost: v })} />
+            </div>
+            {/* 4행: 구입처 + 사용부서 */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <InputField label="구입처" value={form.vendor} onChange={v => setForm({ ...form, vendor: v })} />
+              <SelectField label="사용부서" value={form.department || ""} onChange={v => setForm({ ...form, department: v })}
+                options={["", ...DEPARTMENTS]} />
+            </div>
+            {/* 5행: 사용자 (수량 1일 때만 활성) */}
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              <label style={{ fontSize: 12, color: C.textMuted, fontWeight: 600 }}>사용자 (없으면 비워두세요)</label>
+              <label style={{ fontSize: 12, color: C.textMuted, fontWeight: 600 }}>
+                사용자 {form.quantity > 1 && <span style={{ color: C.textLight, fontWeight: 400 }}>(수량 2개 이상 시 등록 후 개별 배정)</span>}
+              </label>
               <select value={form.user} onChange={e => setForm({ ...form, user: e.target.value })}
-                style={{ border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 12px", fontSize: 14, color: C.text, outline: "none", background: "#fff" }}>
+                disabled={form.quantity > 1}
+                style={{ border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 12px", fontSize: 14,
+                  color: form.quantity > 1 ? C.textLight : C.text, outline: "none",
+                  background: form.quantity > 1 ? C.bg : "#fff", cursor: form.quantity > 1 ? "not-allowed" : "pointer" }}>
                 <option value="">미배정</option>
                 {members.map(m => <option key={m.id} value={m.name}>{m.name} ({m.department})</option>)}
               </select>
             </div>
+            {/* 6행: 비고 */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <label style={{ fontSize: 12, color: C.textMuted, fontWeight: 600 }}>비고</label>
+              <textarea value={form.note} onChange={e => setForm({ ...form, note: e.target.value })}
+                rows={2} style={{ border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 12px",
+                  fontSize: 14, color: C.text, outline: "none", resize: "vertical", fontFamily: "inherit" }}
+                onFocus={e => e.target.style.borderColor = C.primary}
+                onBlur={e => e.target.style.borderColor = C.border}
+              />
+            </div>
+            {form.quantity > 1 && (
+              <div style={{ background: "#EFF6FF", borderRadius: 8, padding: "10px 14px", fontSize: 13, color: "#1D4ED8" }}>
+                ℹ️ {form.quantity}개의 자산이 개별 자산번호로 일괄 등록됩니다.
+              </div>
+            )}
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 8 }}>
               <Btn variant="ghost" onClick={() => setAddOpen(false)}>취소</Btn>
               <Btn onClick={addAsset}>등록</Btn>
@@ -561,12 +648,24 @@ function AssetPage({ assets, setAssets, history, members }) {
         </Modal>
       )}
 
+      {/* 자산 상세 / 수정 모달 */}
       {selected && (
         <Modal title={editMode ? "자산 수정" : "자산 상세"} onClose={() => setSelected(null)} wide>
           {editMode ? (
             <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-              <InputField label="자산명" value={editForm.name} onChange={v => setEditForm({ ...editForm, name: v })} />
-              <SelectField label="유형" value={editForm.type || "기타"} onChange={v => setEditForm({ ...editForm, type: v })} options={ASSET_TYPES} />
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                <InputField label="자산명" value={editForm.name} onChange={v => setEditForm({ ...editForm, name: v })} />
+                <SelectField label="유형" value={editForm.type || "기타"} onChange={v => setEditForm({ ...editForm, type: v })} options={ASSET_TYPES} />
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                <InputField label="위치" value={editForm.location} onChange={v => setEditForm({ ...editForm, location: v })} />
+                <SelectField label="사용부서" value={editForm.department || ""} onChange={v => setEditForm({ ...editForm, department: v })} options={["", ...DEPARTMENTS]} />
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                <InputField label="취득일자" value={editForm.acquisitionDate || ""} onChange={v => setEditForm({ ...editForm, acquisitionDate: v })} />
+                <InputField label="취득금액 (원)" value={editForm.acquisitionCost || ""} onChange={v => setEditForm({ ...editForm, acquisitionCost: v })} />
+              </div>
+              <InputField label="구입처" value={editForm.vendor || ""} onChange={v => setEditForm({ ...editForm, vendor: v })} />
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                 <label style={{ fontSize: 12, color: C.textMuted, fontWeight: 600 }}>사용자</label>
                 <select value={editForm.user === "-" ? "" : editForm.user}
@@ -576,13 +675,21 @@ function AssetPage({ assets, setAssets, history, members }) {
                   {members.map(m => <option key={m.id} value={m.name}>{m.name} ({m.department})</option>)}
                 </select>
               </div>
-              <InputField label="위치" value={editForm.location} onChange={v => setEditForm({ ...editForm, location: v })} />
               <SelectField label="상태" value={editForm.status} onChange={v => setEditForm({ ...editForm, status: v })} options={STATUS_OPTIONS} />
               {(editForm.status === "미사용" || editForm.status === "수리중") && editForm.user !== "-" && (
                 <div style={{ background: "#FEF3C7", borderRadius: 8, padding: "10px 14px", fontSize: 13, color: "#92400E" }}>
                   ⚠️ 상태를 '{editForm.status}'으로 변경하면 사용자가 자동으로 초기화됩니다.
                 </div>
               )}
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <label style={{ fontSize: 12, color: C.textMuted, fontWeight: 600 }}>비고</label>
+                <textarea value={editForm.note || ""} onChange={e => setEditForm({ ...editForm, note: e.target.value })}
+                  rows={2} style={{ border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 12px",
+                    fontSize: 14, color: C.text, outline: "none", resize: "vertical", fontFamily: "inherit" }}
+                  onFocus={e => e.target.style.borderColor = C.primary}
+                  onBlur={e => e.target.style.borderColor = C.border}
+                />
+              </div>
               <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 8 }}>
                 <Btn variant="ghost" onClick={() => setEditMode(false)}>취소</Btn>
                 <Btn onClick={saveEdit}>저장</Btn>
@@ -593,23 +700,28 @@ function AssetPage({ assets, setAssets, history, members }) {
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 20 }}>
                 {[
                   { label: "자산번호", value: selected.id },
-                  { label: "자산명", value: selected.name },
                   { label: "유형", value: selected.type || "기타" },
+                  { label: "자산명", value: selected.name },
                   { label: "상태", value: <StatusBadge status={selected.status} /> },
+                  { label: "사용부서", value: selected.department || "-" },
                   { label: "사용자", value: displayUser(selected.user) },
                   { label: "위치", value: selected.location },
-                  { label: "등록일", value: selected.date },
+                  { label: "취득일자", value: selected.acquisitionDate || "-" },
+                  { label: "취득금액", value: selected.acquisitionCost ? `${Number(selected.acquisitionCost).toLocaleString()}원` : "-" },
+                  { label: "구입처", value: selected.vendor || "-" },
+                  { label: "등록일", value: displayDate(selected.date) },
+                  { label: "비고", value: selected.note || "-" },
                 ].map(({ label, value }) => <Field key={label} label={label} value={value} />)}
               </div>
               <div style={{ background: C.bg, borderRadius: 10, padding: 16, marginBottom: 20 }}>
-                <p style={{ margin: "0 0 12px", fontSize: 13, fontWeight: 600, color: "#475569" }}>배정/반납 이력</p>
+                <p style={{ margin: "0 0 12px", fontSize: 13, fontWeight: 600, color: "#475569" }}>자산 이력</p>
                 {assetHistory.length > 0
                   ? assetHistory.map(h => (
                     <div key={h.id} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
                       <HistoryBadge type={h.type} />
-                      <span style={{ fontSize: 13, color: "#475569", flex: 1 }}>{h.from} → {h.to}</span>
+                      <span style={{ fontSize: 13, color: "#475569", flex: 1 }}>{displayUser(h.from)} → {displayUser(h.to)}</span>
                       <span style={{ fontSize: 12, color: C.textLight }}>{h.note}</span>
-                      <span style={{ fontSize: 12, color: C.textLight }}>{h.date}</span>
+                      <span style={{ fontSize: 12, color: C.textLight }}>{displayDate(h.date)}</span>
                     </div>
                   ))
                   : <p style={{ margin: 0, fontSize: 13, color: "#CBD5E1" }}>이력 없음</p>}
@@ -625,6 +737,7 @@ function AssetPage({ assets, setAssets, history, members }) {
     </main>
   );
 }
+
 
 // ── 구성원 관리 ──
 function MemberPage({ members, setMembers, assets, setAssets }) {
@@ -865,6 +978,7 @@ function HistoryPage({ history }) {
         { label: "반납", value: history.filter(h => h.type === "반납").length, color: "#92400E" },
         { label: "입고", value: history.filter(h => h.type === "입고").length, color: "#065F46" },
         { label: "상태변경", value: history.filter(h => h.type === "상태변경").length, color: "#6D28D9" },
+        { label: "폐기", value: history.filter(h => h.type === "폐기").length, color: "#991B1B" },
       ]} />
       <SearchFilter value={search} onChange={setSearch}
         filters={HISTORY_TYPES} active={filterType} onFilter={setFilterType} />
@@ -881,7 +995,7 @@ function HistoryPage({ history }) {
               <td style={{ padding: "14px 20px", fontSize: 14, color: C.textMuted }}>{displayUser(h.from)}</td>
               <td style={{ padding: "14px 20px", fontSize: 14, color: C.text, fontWeight: 500 }}>{displayUser(h.to)}</td>
               <td style={{ padding: "14px 20px", fontSize: 13, color: C.textLight }}>{h.note || "-"}</td>
-              <td style={{ padding: "14px 20px", fontSize: 13, color: C.textLight }}>{h.date}</td>
+              <td style={{ padding: "14px 20px", fontSize: 13, color: C.textLight }}>{displayDate(h.date)}</td>
             </tr>
           ))
           : [<tr key="empty"><td colSpan={6} style={{ padding: "40px", textAlign: "center", fontSize: 14, color: "#CBD5E1" }}>이력이 없습니다</td></tr>]
@@ -923,10 +1037,11 @@ export default function App() {
       if (session) fetchAll();
       else setLoading(false);
     });
-    supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
       if (session) fetchAll();
     });
+    return () => subscription.unsubscribe();
   }, []);
 
   /* 3분마다 자동 새로고침 (현재는 보류)
@@ -946,10 +1061,9 @@ export default function App() {
   };
 
   const updateAssets = async (newAssets, histories = []) => {
-    // 1. 자산 상태 즉시 반영
+    const prev = assets;
     setAssetsState(newAssets);
 
-    const prev = assets;
     const added   = newAssets.filter(n => !prev.find(p => p.id === n.id));
     const removed = prev.filter(p => !newAssets.find(n => n.id === p.id));
     const updated = newAssets.filter(n => {
@@ -957,22 +1071,30 @@ export default function App() {
       return old && JSON.stringify(old) !== JSON.stringify(n);
     });
 
-    // DB 연동
-    if (added.length)   await supabase.from("assets").insert(added);
-    if (removed.length) await supabase.from("assets").delete().in("id", removed.map(r => r.id));
-    if (updated.length) await Promise.all(updated.map(u => supabase.from("assets").update(u).eq("id", u.id)));
-
-    // 2. 이력 저장 및 최신순 정렬 로직
-    if (histories.length > 0) {
-      await supabase.from("history").insert(histories);
+    if (added.length) {
+      const { error } = await supabase.from("assets").insert(added);
+      if (error) { setAssetsState(prev); alert("등록 실패: " + error.message); return; }
+    }
+    if (removed.length) {
+      const { error } = await supabase.from("assets").delete().in("id", removed.map(r => r.id));
+      if (error) { setAssetsState(prev); alert("삭제 실패: " + error.message); return; }
+    }
+    if (updated.length) {
+      for (const u of updated) {
+        const { error } = await supabase.from("assets").update(u).eq("id", u.id);
+        if (error) { setAssetsState(prev); alert("수정 실패: " + error.message); return; }
+      }
     }
 
-    // 이력이 있든 없든 최신 목록을 가져와서 정렬 상태 유지 (데이터 무결성)
+    if (histories.length > 0) {
+      const { error } = await supabase.from("history").insert(histories);
+      if (error) { alert("이력 저장 실패: " + error.message); return; }
+    }
+
     const { data: hData } = await supabase.from("history")
       .select("*")
-      .order("date", { ascending: false }) // 1차: 날짜 최신순
-      .order("id", { ascending: false });  // 2차: 같은 날짜면 나중에 생성된 순
-
+      .order("date", { ascending: false })
+      .order("id", { ascending: false });
     if (hData) setHistoryState(hData);
   };
 
