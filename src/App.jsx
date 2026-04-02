@@ -106,10 +106,10 @@ const Modal = ({ title, onClose, children, wide }) => (
   </div>
 );
 
-const InputField = ({ label, value, onChange, type = "text" }) => (
+const InputField = ({ label, value, onChange, type = "text", placeholder = ""}) => (
   <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
     <label style={{ fontSize: 12, color: C.textMuted, fontWeight: 600 }}>{label}</label>
-    <input type={type} value={value} onChange={e => onChange(e.target.value)}
+    <input type={type} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}
       style={{ border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 12px", fontSize: 14, color: C.text, outline: "none", transition: "border 0.15s" }}
       onFocus={e => e.target.style.borderColor = C.primary}
       onBlur={e => e.target.style.borderColor = C.border}
@@ -122,7 +122,7 @@ const SelectField = ({ label, value, onChange, options }) => (
     <label style={{ fontSize: 12, color: C.textMuted, fontWeight: 600 }}>{label}</label>
     <select value={value} onChange={e => onChange(e.target.value)}
       style={{ border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 12px", fontSize: 14, color: C.text, outline: "none", background: "#fff" }}>
-      {options.map(o => <option key={o}>{o}</option>)}
+      {options.map(o => <option key={o} value={o}>{o === "" ? "미지정" : o}</option>)}
     </select>
   </div>
 );
@@ -185,7 +185,7 @@ const SearchFilter = ({ value, onChange, filters, active, onFilter, activeColor 
 // ── 정렬 가능한 테이블 ──
 // [수정 6] 컬럼 클릭 정렬 기능 추가
 const SortableTable = ({ headers, rows, data, sortKey, sortDir, onSort }) => (
-  <div style={{ background: C.card, borderRadius: 12, boxShadow: "0 1px 4px rgba(0,0,0,0.06)", overflow: "hidden" }}>
+  <div style={{ background: C.card, borderRadius: 12, boxShadow: "0 1px 4px rgba(0,0,0,0.06)", overflow: "auto" }}>
     <table style={{ width: "100%", borderCollapse: "collapse" }}>
       <thead>
         <tr style={{ background: "#F8FAFC", borderBottom: `1px solid ${C.border}` }}>
@@ -385,7 +385,7 @@ function AssetPage({ assets, setAssets, history, members }) {
   const [addOpen, setAddOpen] = useState(false);
   const [form, setForm] = useState({
     name: "", type: "기타", location: "", user: "",
-    acquisitionDate: "", acquisitionCost: "", vendor: "",
+    purchaseDate: "", purchaseCost: "", vendor: "",
     department: "", note: "", quantity: 1,
   });
   const [selected, setSelected] = useState(null);
@@ -437,8 +437,8 @@ function AssetPage({ assets, setAssets, history, members }) {
         user: isAssigned ? form.user : "-",
         department: form.department || "-",
         location: form.location,
-        acquisitionDate: form.acquisitionDate || "-",
-        acquisitionCost: form.acquisitionCost || "-",
+        purchaseDate: form.purchaseDate ? `${form.purchaseDate} ${toKST().slice(11, 19)}` : "-",
+        purchaseCost: form.purchaseCost || "-",
         vendor: form.vendor || "-",
         note: form.note || "-",
         date: toKST(i), // 수량이 여러 개일 때 ms 차이로 순서 보장
@@ -454,7 +454,7 @@ function AssetPage({ assets, setAssets, history, members }) {
     setAddOpen(false);
     setForm({
       name: "", type: "기타", location: "", user: "",
-      acquisitionDate: "", acquisitionCost: "", vendor: "",
+      purchaseDate: "", purchaseCost: "", vendor: "",
       department: "", note: "", quantity: 1,
     });
   };
@@ -517,10 +517,14 @@ function AssetPage({ assets, setAssets, history, members }) {
     { label: "자산번호", key: "id" },
     { label: "유형", key: "type" },
     { label: "자산명", key: "name" },
+    { label: "취득일자", key: "purchaseDate" },
+    { label: "취득금액", key: "purchaseCost" },
+    { label: "구입처", key: "vendor" },
     { label: "사용부서", key: "department" },
     { label: "사용자", key: "user" },
     { label: "상태", key: "status" },
     { label: "위치", key: "location" },
+    { label: "비고", key: "note" },
     { label: "등록일", key: "date" },
   ];
 
@@ -565,14 +569,18 @@ function AssetPage({ assets, setAssets, history, members }) {
             style={{ borderBottom: i < filtered.length - 1 ? `1px solid ${C.bg}` : "none", cursor: "pointer" }}
             onMouseEnter={e => e.currentTarget.style.background = "#F8FAFC"}
             onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
-            <td style={{ padding: "14px 20px", fontSize: 13, color: C.textMuted }}>{a.id}</td>
-            <td style={{ padding: "14px 20px", fontSize: 14, color: C.textMuted }}>{a.type || "기타"}</td>
-            <td style={{ padding: "14px 20px", fontSize: 14, color: C.text, fontWeight: 500 }}>{a.name}</td>
-            <td style={{ padding: "14px 20px", fontSize: 14, color: C.text }}>{a.department || "-"}</td>
-            <td style={{ padding: "14px 20px", fontSize: 14, color: a.user === "-" ? C.textLight : C.text }}>{displayUser(a.user)}</td>
-            <td style={{ padding: "14px 20px" }}><StatusBadge status={a.status} /></td>
-            <td style={{ padding: "14px 20px", fontSize: 14, color: C.text }}>{a.location}</td>
-            <td style={{ padding: "14px 20px", fontSize: 13, color: C.textLight }}>{displayDate(a.date)}</td>
+            <td style={{ padding: "14px 20px", fontSize: 13, color: C.textMuted, whiteSpace: "nowrap" }}>{a.id}</td>
+            <td style={{ padding: "14px 20px", fontSize: 14, color: C.textMuted, whiteSpace: "nowrap" }}>{a.type || "기타"}</td>
+            <td style={{ padding: "14px 20px", fontSize: 14, color: C.text, fontWeight: 500, whiteSpace: "nowrap" }}>{a.name}</td>
+            <td style={{ padding: "14px 20px", fontSize: 14, color: C.text, whiteSpace: "nowrap" }}>{a.purchaseDate && a.purchaseDate !== "-" ? displayDate(a.purchaseDate) : "-"}</td>
+            <td style={{ padding: "14px 20px", fontSize: 14, color: C.text, whiteSpace: "nowrap" }}>{a.purchaseCost ? `${Number(a.purchaseCost).toLocaleString()}원` : "-"}</td>
+            <td style={{ padding: "14px 20px", fontSize: 14, color: C.text, whiteSpace: "nowrap" }}>{a.vendor || "-"}</td>
+            <td style={{ padding: "14px 20px", fontSize: 14, color: C.text, whiteSpace: "nowrap" }}>{a.department || "-"}</td>
+            <td style={{ padding: "14px 20px", fontSize: 14, color: a.user === "-" ? C.textLight : C.text, whiteSpace: "nowrap" }}>{displayUser(a.user)}</td>
+            <td style={{ padding: "14px 20px", whiteSpace: "nowrap" }}><StatusBadge status={a.status} /></td>
+            <td style={{ padding: "14px 20px", fontSize: 14, color: C.text, whiteSpace: "nowrap" }}>{a.location}</td>
+            <td style={{ padding: "14px 20px", fontSize: 13, color: C.textLight, whiteSpace: "nowrap", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis" }}>{a.note || "-"}</td>
+            <td style={{ padding: "14px 20px", fontSize: 13, color: C.textLight, whiteSpace: "nowrap" }}>{displayDate(a.date)}</td>
           </tr>
         ))}
       />
@@ -602,8 +610,8 @@ function AssetPage({ assets, setAssets, history, members }) {
             </div>
             {/* 3행: 취득일자 + 취득금액 */}
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-              <InputField label="취득일자" value={form.acquisitionDate} onChange={v => setForm({ ...form, acquisitionDate: v })} placeholder="예: 2024-01-01" />
-              <InputField label="취득금액 (원)" value={form.acquisitionCost} onChange={v => setForm({ ...form, acquisitionCost: v })} />
+              <InputField label="취득일자" value={form.purchaseDate} type="date" onChange={v => setForm({ ...form, purchaseDate: v })} />
+              <InputField label="취득금액 (원)" value={form.purchaseCost} onChange={v => setForm({ ...form, purchaseCost: v })} />
             </div>
             {/* 4행: 구입처 + 사용부서 */}
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
@@ -662,8 +670,8 @@ function AssetPage({ assets, setAssets, history, members }) {
                 <SelectField label="사용부서" value={editForm.department || ""} onChange={v => setEditForm({ ...editForm, department: v })} options={["", ...DEPARTMENTS]} />
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                <InputField label="취득일자" value={editForm.acquisitionDate || ""} onChange={v => setEditForm({ ...editForm, acquisitionDate: v })} />
-                <InputField label="취득금액 (원)" value={editForm.acquisitionCost || ""} onChange={v => setEditForm({ ...editForm, acquisitionCost: v })} />
+                <InputField label="취득일자" value={editForm.purchaseDate || ""} type="date" onChange={v => setEditForm({ ...editForm, purchaseDate: v })} />
+                <InputField label="취득금액 (원)" value={editForm.purchaseCost || ""} onChange={v => setEditForm({ ...editForm, purchaseCost: v })} />
               </div>
               <InputField label="구입처" value={editForm.vendor || ""} onChange={v => setEditForm({ ...editForm, vendor: v })} />
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -706,8 +714,8 @@ function AssetPage({ assets, setAssets, history, members }) {
                   { label: "사용부서", value: selected.department || "-" },
                   { label: "사용자", value: displayUser(selected.user) },
                   { label: "위치", value: selected.location },
-                  { label: "취득일자", value: selected.acquisitionDate || "-" },
-                  { label: "취득금액", value: selected.acquisitionCost ? `${Number(selected.acquisitionCost).toLocaleString()}원` : "-" },
+                  { label: "취득일자", value: selected.purchaseDate && selected.purchaseDate !== "-" ? displayDate(selected.purchaseDate) : "-" },
+                  { label: "취득금액", value: selected.purchaseCost ? `${Number(selected.purchaseCost).toLocaleString()}원` : "-" },
                   { label: "구입처", value: selected.vendor || "-" },
                   { label: "등록일", value: displayDate(selected.date) },
                   { label: "비고", value: selected.note || "-" },
@@ -829,7 +837,7 @@ function MemberPage({ members, setMembers, assets, setAssets }) {
         action={<Btn onClick={() => setAddOpen(true)}>+ 구성원 등록</Btn>} />
       <SummaryCards items={[
         { label: "전체", value: members.length, color: C.primary },
-        ...DEPARTMENTS.slice(0, 3).map(d => ({ label: d, value: members.filter(m => m.department === d).length, color: C.purple }))
+        ...DEPARTMENTS.map(d => ({ label: d, value: members.filter(m => m.department === d).length, color: C.purple }))
       ]} />
       <SearchFilter value={search} onChange={setSearch}
         filters={["전체", ...DEPARTMENTS]} active={filterDept} onFilter={setFilterDept} activeColor={C.purple} />
