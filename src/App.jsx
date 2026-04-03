@@ -7,8 +7,8 @@ import { supabase } from "./supabase";
 import { exportToExcel } from "./exportExcel";
 
 const DEPARTMENTS = ["개발팀", "디자인팀", "마케팅팀", "HR팀", "경영지원팀"];
-const STATUS_OPTIONS = ["사용중", "미사용", "수리중"];
-const STATUS_COLORS = { "사용중": "#10B981", "미사용": "#94A3B8", "수리중": "#EF4444" };
+const STATUS_OPTIONS = ["사용중", "미사용", "수리중", "분실"];
+const STATUS_COLORS = { "사용중": "#10B981", "미사용": "#94A3B8", "수리중": "#EF4444", "분실": "#F97316" };
 const HISTORY_TYPES = ["전체", "배정", "반납", "입고", "상태변경", "폐기"];
 const HISTORY_STYLES = {
   "배정":    { background: "#DBEAFE", color: "#1D4ED8" },
@@ -18,6 +18,11 @@ const HISTORY_STYLES = {
   "폐기":    { background: "#FEE2E2", color: "#991B1B" },
 };
 const ASSET_TYPES = ["노트북", "스마트폰", "태블릿", "모니터", "키보드/마우스", "헤드셋", "기타"];
+const ROLES = [
+  "인턴", "사원", "주임", "대리", "과장", "차장", "부장",
+  "연구원", "주임연구원", "선임연구원", "책임연구원", "수석연구원",
+  "원장", "소장", "본부장", "전무", "부사장", "대표"
+];
 // 사용자 표시용 헬퍼 — "-"를 "미배정"으로 변환
 const displayUser = (user) => (!user || user === "-") ? "미배정" : user;
 
@@ -78,7 +83,9 @@ const StatusBadge = ({ status }) => {
   const style =
     status === "사용중" ? { background: "#D1FAE5", color: "#065F46" } :
     status === "미사용" ? { background: "#F1F5F9", color: "#64748B" } :
-    { background: "#FEE2E2", color: "#991B1B" };
+    status === "수리중" ? { background: "#FEE2E2", color: "#991B1B" } :
+    status === "분실"   ? { background: "#FFF7ED", color: "#C2410C" } :
+    { background: "#F1F5F9", color: "#64748B" };
   return <span style={{ ...style, padding: "3px 10px", borderRadius: 99, fontSize: 12, fontWeight: 600 }}>{status}</span>;
 };
 
@@ -296,23 +303,41 @@ function makeHistory(type, asset, prevUser, nextUser, note, offsetMs = 0) {
 }
 
 // ── 대시보드 ──
-function Dashboard({ assets, members, history }) {
-  const statusData = STATUS_OPTIONS.map(s => ({ name: s, value: assets.filter(a => a.status === s).length }));
-  const deptMap = {};
-  members.forEach(m => { deptMap[m.department] = (deptMap[m.department] || 0) + 1; });
-  const deptData = Object.entries(deptMap).map(([name, value]) => ({ name, value }));
+function Dashboard({ assets, members, history, permission, userDept }) {
 
-  // [수정 5] 배정/반납/입고 타입만 필터해서 최신 5개 표시
-  const recentHistory = history
+  const filteredAssets = permission === "admin" ? assets : assets.filter(a => a.department === userDept);
+  const filteredMembers = permission === "admin" ? members : members.filter(m => m.department === userDept);
+  const filteredHistory = permission === "admin" ? history : history.filter(h =>
+    filteredAssets.some(a => a.id === h.assetId)
+  );
+
+  const statusData = STATUS_OPTIONS.map(s => ({
+    name: s, value: filteredAssets.filter(a => a.status === s).length
+  }));
+
+  const deptMemberMap = {};
+  filteredMembers.forEach(m => {
+    deptMemberMap[m.department] = (deptMemberMap[m.department] || 0) + 1;
+  });
+  const deptMemberData = Object.entries(deptMemberMap).map(([name, value]) => ({ name, value }));
+
+  const deptAssetData = DEPARTMENTS.map(dept => ({
+    name: dept,
+    사용중: filteredAssets.filter(a => a.department === dept && a.status === "사용중").length,
+    미사용: filteredAssets.filter(a => a.department === dept && a.status === "미사용").length,
+    수리중: filteredAssets.filter(a => a.department === dept && a.status === "수리중").length,
+  }));
+
+  const recentHistory = filteredHistory
     .filter(h => ["배정", "반납", "입고"].includes(h.type))
-    .slice(0, 5);
+    .slice(0, 10);
 
   return (
     <main style={{ flex: 1, padding: "36px 40px", overflowY: "auto" }}>
       <PageHeader title="대시보드" subtitle="전체 현황을 한눈에 확인하세요"
         action={
           <button
-            onClick={() => exportToExcel(assets, members, history)}
+            onClick={() => exportToExcel(filteredAssets, filteredMembers, filteredHistory)}
             style={{ background: "#10B981", color: "#fff", border: "none", padding: "10px 20px", borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}
             onMouseEnter={e => e.currentTarget.style.opacity = "0.85"}
             onMouseLeave={e => e.currentTarget.style.opacity = "1"}
@@ -321,15 +346,20 @@ function Dashboard({ assets, members, history }) {
           </button>
         }
       />
+
       <SummaryCards items={[
-        { label: "전체 자산", value: assets.length, color: C.primary },
-        { label: "사용중", value: assets.filter(a => a.status === "사용중").length, color: "#10B981" },
-        { label: "미사용", value: assets.filter(a => a.status === "미사용").length, color: C.textMuted },
-        { label: "수리중", value: assets.filter(a => a.status === "수리중").length, color: C.danger },
-        { label: "전체 구성원", value: members.length, color: C.purple },
+        { label: "전체 자산", value: filteredAssets.length, color: C.primary },
+        { label: "사용중", value: filteredAssets.filter(a => a.status === "사용중").length, color: "#10B981" },
+        { label: "미사용", value: filteredAssets.filter(a => a.status === "미사용").length, color: C.textMuted },
+        { label: "수리중", value: filteredAssets.filter(a => a.status === "수리중").length, color: C.danger },
+        { label: "분실", value: filteredAssets.filter(a => a.status === "분실").length, color: "#F97316" },
+        { label: "전체 구성원", value: filteredMembers.length, color: C.purple },
       ]} />
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, marginBottom: 20 }}>
+      {/* 3열 차트 */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 20, marginBottom: 20 }}>
+
+        {/* 자산 상태별 파이차트 */}
         <div style={{ background: C.card, borderRadius: 12, padding: 24, boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}>
           <h3 style={{ margin: "0 0 20px", fontSize: 15, fontWeight: 700, color: C.text }}>자산 상태별 현황</h3>
           <ResponsiveContainer width="100%" height={200}>
@@ -349,19 +379,46 @@ function Dashboard({ assets, members, history }) {
             ))}
           </div>
         </div>
+
+        {/* 부서별 자산 현황 스택 바차트 */}
+        <div style={{ background: C.card, borderRadius: 12, padding: 24, boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}>
+          <h3 style={{ margin: "0 0 20px", fontSize: 15, fontWeight: 700, color: C.text }}>부서별 자산 현황</h3>
+          <ResponsiveContainer width="100%" height={200}>
+            <BarChart data={deptAssetData} barSize={20}>
+              <XAxis dataKey="name" tick={{ fontSize: 10, fill: C.textLight }} axisLine={false} tickLine={false} />
+              <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: C.textLight }} axisLine={false} tickLine={false} />
+              <Tooltip cursor={{ fill: "#F1F5F9" }} />
+              <Bar dataKey="사용중" stackId="a" fill="#10B981" radius={[0, 0, 0, 0]} name="사용중" />
+              <Bar dataKey="미사용" stackId="a" fill="#94A3B8" name="미사용" />
+              <Bar dataKey="수리중" stackId="a" fill="#EF4444" radius={[4, 4, 0, 0]} name="수리중" />
+            </BarChart>
+          </ResponsiveContainer>
+          <div style={{ display: "flex", justifyContent: "center", gap: 16, marginTop: 8 }}>
+            {[{ name: "사용중", color: "#10B981" }, { name: "미사용", color: "#94A3B8" }, { name: "수리중", color: "#EF4444" }].map(({ name, color }) => (
+              <div key={name} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: C.textMuted }}>
+                <div style={{ width: 8, height: 8, borderRadius: "50%", background: color }} />
+                {name}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* 부서별 구성원 현황 */}
         <div style={{ background: C.card, borderRadius: 12, padding: 24, boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}>
           <h3 style={{ margin: "0 0 20px", fontSize: 15, fontWeight: 700, color: C.text }}>부서별 구성원 현황</h3>
           <ResponsiveContainer width="100%" height={200}>
-            <BarChart data={deptData} barSize={32}>
-              <XAxis dataKey="name" tick={{ fontSize: 11, fill: C.textLight }} axisLine={false} tickLine={false} />
-              <YAxis allowDecimals={false} tick={{ fontSize: 12, fill: C.textLight }} axisLine={false} tickLine={false} />
+            <BarChart data={deptMemberData} barSize={20}>
+              <XAxis dataKey="name" tick={{ fontSize: 10, fill: C.textLight }} axisLine={false} tickLine={false} />
+              <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: C.textLight }} axisLine={false} tickLine={false} />
               <Tooltip cursor={{ fill: "#F1F5F9" }} />
-              <Bar dataKey="value" fill={C.purple} radius={[6, 6, 0, 0]} name="구성원 수" />
+              <Bar dataKey="value" fill={C.purple} radius={[4, 4, 0, 0]} name="구성원 수" />
             </BarChart>
           </ResponsiveContainer>
         </div>
+
       </div>
 
+      {/* 최근 배정/반납 이력 */}
       <div style={{ background: C.card, borderRadius: 12, padding: 24, boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}>
         <h3 style={{ margin: "0 0 16px", fontSize: 15, fontWeight: 700, color: C.text }}>최근 배정/반납 이력</h3>
         {recentHistory.length === 0
@@ -381,7 +438,9 @@ function Dashboard({ assets, members, history }) {
 }
 
 // ── 자산관리 ──
-function AssetPage({ assets, setAssets, history, members }) {
+function AssetPage({ assets, setAssets, history, members, permission, userDept }) {
+  // 부서장/뷰어면 자기 부서 자산만
+  const visibleAssets = permission === "admin" ? assets : assets.filter(a => a.department === userDept);
   const [addOpen, setAddOpen] = useState(false);
   const [form, setForm] = useState({
     name: "", type: "기타", location: "", user: "",
@@ -394,18 +453,20 @@ function AssetPage({ assets, setAssets, history, members }) {
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState("전체");
   const [filterDept, setFilterDept] = useState("전체");
+  const [filterType, setFilterType] = useState("전체");
   const [currentPage, setCurrentPage] = useState(1);
   const PER_PAGE = 15;
   const memberNames = members.map(m => m.name);
 
-  useEffect(() => { setCurrentPage(1); }, [search, filterStatus, filterDept]);
+  useEffect(() => { setCurrentPage(1); }, [search, filterStatus, filterDept, filterType]);
 
-  const base = assets.filter(a => {
-    const matchStatus = filterStatus === "전체" || a.status === filterStatus;
-    const matchDept = filterDept === "전체" || a.department === filterDept;
-    const matchSearch = [a.id, a.name, a.user, a.location, a.department, a.vendor, a.note]
-      .some(v => v?.toLowerCase().includes(search.toLowerCase()));
-    return matchStatus && matchDept && matchSearch;
+  const base = visibleAssets.filter(a => {
+  const matchStatus = filterStatus === "전체" || a.status === filterStatus;
+  const matchDept = filterDept === "전체" || a.department === filterDept;
+  const matchType = filterType === "전체" || a.type === filterType;
+  const matchSearch = [a.id, a.name, a.user, a.location, a.department, a.vendor, a.note]
+    .some(v => v?.toLowerCase().includes(search.toLowerCase()));
+  return matchStatus && matchDept && matchType && matchSearch;
   });
   const { sorted, sortKey, sortDir, handleSort } = useSort(base, "date");
   const totalFiltered = sorted.length;
@@ -480,6 +541,10 @@ function AssetPage({ assets, setAssets, history, members }) {
       const prevUser = updated.user;
       updated.user = "-";
       histories.push(makeHistory("반납", updated, prevUser, "-", "수리 입고로 인한 자동 반납"));
+    } else if (updated.status === "분실" && updated.user !== "-" && updated.user !== "미배정") {
+      const prevUser = updated.user;
+      updated.user = "-";
+      histories.push(makeHistory("반납", updated, prevUser, "-", "분실 처리로 인한 자동 반납"));
     } else if (userChanged && updated.status !== "미사용" && updated.status !== "수리중") {
       if (prev.user === "-" && updated.user !== "-") {
         histories.push(makeHistory("배정", updated, "-", updated.user, `${updated.user}에게 배정`));
@@ -515,15 +580,15 @@ function AssetPage({ assets, setAssets, history, members }) {
 
   const ASSET_HEADERS = [
     { label: "자산번호", key: "id" },
-    { label: "유형", key: "type" },
     { label: "자산명", key: "name" },
+    { label: "유형", key: "type" },
+    { label: "상태", key: "status" },
+    { label: "위치", key: "location" },
+    { label: "사용부서", key: "department" },
+    { label: "사용자", key: "user" },
     { label: "취득일자", key: "purchaseDate" },
     { label: "취득금액", key: "purchaseCost" },
     { label: "구입처", key: "vendor" },
-    { label: "사용부서", key: "department" },
-    { label: "사용자", key: "user" },
-    { label: "상태", key: "status" },
-    { label: "위치", key: "location" },
     { label: "비고", key: "note" },
     { label: "등록일", key: "date" },
   ];
@@ -543,23 +608,37 @@ function AssetPage({ assets, setAssets, history, members }) {
     </div>
   );
 
+
+
   return (
     <main style={{ flex: 1, padding: "36px 40px", overflowY: "auto" }}>
       <PageHeader title="자산 관리" subtitle="등록된 IT 기기를 한눈에 확인하세요"
-        action={<Btn onClick={() => setAddOpen(true)}>+ 자산 등록</Btn>} />
+        action={permission !== "viewer" ? <Btn onClick={() => setAddOpen(true)}>+ 자산 등록</Btn> : null} />
       <SummaryCards items={[
-        { label: "전체 자산", value: assets.length, color: C.primary },
-        { label: "사용중", value: assets.filter(a => a.status === "사용중").length, color: "#10B981" },
-        { label: "미사용", value: assets.filter(a => a.status === "미사용").length, color: C.textMuted },
-        { label: "수리중", value: assets.filter(a => a.status === "수리중").length, color: C.danger },
+        { label: "전체 자산", value: visibleAssets.length, color: C.primary },
+        { label: "사용중", value: visibleAssets.filter(a => a.status === "사용중").length, color: "#10B981" },
+        { label: "미사용", value: visibleAssets.filter(a => a.status === "미사용").length, color: C.textMuted },
+        { label: "수리중", value: visibleAssets.filter(a => a.status === "수리중").length, color: C.danger },
+        { label: "분실", value: visibleAssets.filter(a => a.status === "분실").length, color: "#F97316" },
         { label: "전체 구성원", value: members.length, color: C.purple },
       ]} />
 
       {/* 상태 필터 */}
       <SearchFilter value={search} onChange={setSearch}
-        filters={["전체", "사용중", "미사용", "수리중"]} active={filterStatus} onFilter={setFilterStatus} />
+      filters={["전체", "사용중", "미사용", "수리중", "분실"]} active={filterStatus} onFilter={setFilterStatus} />
       {/* 부서 필터 */}
       {deptFilterRow}
+      <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
+        {["전체", ...ASSET_TYPES].map(t => (
+          <button key={t} onClick={() => setFilterType(t)}
+            style={{ padding: "9px 16px", borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: "pointer",
+              border: `1px solid ${C.border}`,
+              background: filterType === t ? C.primary : C.card,
+              color: filterType === t ? "#fff" : C.textMuted, transition: "all 0.15s" }}>
+            {t}
+          </button>
+        ))}
+      </div>
 
       <SortableTable
         headers={ASSET_HEADERS}
@@ -570,16 +649,16 @@ function AssetPage({ assets, setAssets, history, members }) {
             onMouseEnter={e => e.currentTarget.style.background = "#F8FAFC"}
             onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
             <td style={{ padding: "14px 20px", fontSize: 13, color: C.textMuted, whiteSpace: "nowrap" }}>{a.id}</td>
-            <td style={{ padding: "14px 20px", fontSize: 14, color: C.textMuted, whiteSpace: "nowrap" }}>{a.type || "기타"}</td>
             <td style={{ padding: "14px 20px", fontSize: 14, color: C.text, fontWeight: 500, whiteSpace: "nowrap" }}>{a.name}</td>
+            <td style={{ padding: "14px 20px", fontSize: 14, color: C.textMuted, whiteSpace: "nowrap" }}>{a.type || "기타"}</td>
+            <td style={{ padding: "14px 20px", whiteSpace: "nowrap" }}><StatusBadge status={a.status} /></td>
+            <td style={{ padding: "14px 20px", fontSize: 14, color: C.text, whiteSpace: "nowrap" }}>{a.location}</td>
+            <td style={{ padding: "14px 20px", fontSize: 14, color: C.text, whiteSpace: "nowrap" }}>{a.department || "-"}</td>
+            <td style={{ padding: "14px 20px", fontSize: 14, color: a.user === "-" ? C.textLight : C.text, whiteSpace: "nowrap" }}>{displayUser(a.user)}</td>
             <td style={{ padding: "14px 20px", fontSize: 14, color: C.text, whiteSpace: "nowrap" }}>{a.purchaseDate && a.purchaseDate !== "-" ? displayDate(a.purchaseDate) : "-"}</td>
             <td style={{ padding: "14px 20px", fontSize: 14, color: C.text, whiteSpace: "nowrap" }}>{a.purchaseCost ? `${Number(a.purchaseCost).toLocaleString()}원` : "-"}</td>
             <td style={{ padding: "14px 20px", fontSize: 14, color: C.text, whiteSpace: "nowrap" }}>{a.vendor || "-"}</td>
-            <td style={{ padding: "14px 20px", fontSize: 14, color: C.text, whiteSpace: "nowrap" }}>{a.department || "-"}</td>
-            <td style={{ padding: "14px 20px", fontSize: 14, color: a.user === "-" ? C.textLight : C.text, whiteSpace: "nowrap" }}>{displayUser(a.user)}</td>
-            <td style={{ padding: "14px 20px", whiteSpace: "nowrap" }}><StatusBadge status={a.status} /></td>
-            <td style={{ padding: "14px 20px", fontSize: 14, color: C.text, whiteSpace: "nowrap" }}>{a.location}</td>
-            <td style={{ padding: "14px 20px", fontSize: 13, color: C.textLight, whiteSpace: "nowrap", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis" }}>{a.note || "-"}</td>
+            <td style={{ padding: "14px 20px", fontSize: 13, color: C.textLight, whiteSpace: "nowrap", maxWidth: 200, overflow: "auto", textOverflow: "ellipsis" }}>{a.note || "-"}</td>
             <td style={{ padding: "14px 20px", fontSize: 13, color: C.textLight, whiteSpace: "nowrap" }}>{displayDate(a.date)}</td>
           </tr>
         ))}
@@ -611,7 +690,7 @@ function AssetPage({ assets, setAssets, history, members }) {
             {/* 3행: 취득일자 + 취득금액 */}
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
               <InputField label="취득일자" value={form.purchaseDate} type="date" onChange={v => setForm({ ...form, purchaseDate: v })} />
-              <InputField label="취득금액 (원)" value={form.purchaseCost} onChange={v => setForm({ ...form, purchaseCost: v })} />
+              <InputField label="취득금액 (원)" value={form.purchaseCost} type="number" onChange={v => setForm({ ...form, purchaseCost: v })} />
             </div>
             {/* 4행: 구입처 + 사용부서 */}
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
@@ -671,7 +750,7 @@ function AssetPage({ assets, setAssets, history, members }) {
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                 <InputField label="취득일자" value={editForm.purchaseDate || ""} type="date" onChange={v => setEditForm({ ...editForm, purchaseDate: v })} />
-                <InputField label="취득금액 (원)" value={editForm.purchaseCost || ""} onChange={v => setEditForm({ ...editForm, purchaseCost: v })} />
+                <InputField label="취득금액 (원)" value={editForm.purchaseCost || ""} type="number" onChange={v => setEditForm({ ...editForm, purchaseCost: v })} />
               </div>
               <InputField label="구입처" value={editForm.vendor || ""} onChange={v => setEditForm({ ...editForm, vendor: v })} />
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -684,7 +763,7 @@ function AssetPage({ assets, setAssets, history, members }) {
                 </select>
               </div>
               <SelectField label="상태" value={editForm.status} onChange={v => setEditForm({ ...editForm, status: v })} options={STATUS_OPTIONS} />
-              {(editForm.status === "미사용" || editForm.status === "수리중") && editForm.user !== "-" && (
+              {(editForm.status === "미사용" || editForm.status === "수리중" || editForm.status === "분실") && editForm.user !== "-" && (
                 <div style={{ background: "#FEF3C7", borderRadius: 8, padding: "10px 14px", fontSize: 13, color: "#92400E" }}>
                   ⚠️ 상태를 '{editForm.status}'으로 변경하면 사용자가 자동으로 초기화됩니다.
                 </div>
@@ -734,10 +813,12 @@ function AssetPage({ assets, setAssets, history, members }) {
                   ))
                   : <p style={{ margin: 0, fontSize: 13, color: "#CBD5E1" }}>이력 없음</p>}
               </div>
-              <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-                <Btn variant="danger" onClick={deleteAsset}>삭제</Btn>
-                <Btn onClick={() => { setEditForm({ ...selected }); setEditMode(true); }}>수정</Btn>
-              </div>
+              {permission !== "viewer" && (
+                <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+                  <Btn variant="danger" onClick={deleteAsset}>삭제</Btn>
+                  <Btn onClick={() => { setEditForm({ ...selected }); setEditMode(true); }}>수정</Btn>
+                </div>
+              )}
             </div>
           )}
         </Modal>
@@ -748,17 +829,18 @@ function AssetPage({ assets, setAssets, history, members }) {
 
 
 // ── 구성원 관리 ──
-function MemberPage({ members, setMembers, assets, setAssets }) {
+function MemberPage({ members, setMembers, assets, setAssets, history, permission, userDept }) {
+  const visibleMembers = permission === "admin" ? members : members.filter(m => m.department === userDept);
   const [addOpen, setAddOpen] = useState(false);
   const [selected, setSelected] = useState(null);
   const [editMode, setEditMode] = useState(false);
-  const [form, setForm] = useState({ name: "", department: DEPARTMENTS[0], email: "", role: "팀원" });
+  const [form, setForm] = useState({ name: "", department: DEPARTMENTS[0], email: "", role: "사원" });
   const [editForm, setEditForm] = useState({});
   const [search, setSearch] = useState("");
   const [filterDept, setFilterDept] = useState("전체");
   const [sortBy, setSortBy] = useState("name"); // 기본: 이름순
 
-  const filtered = members.filter(m => {
+  const filtered = visibleMembers.filter(m => {
     const matchDept = filterDept === "전체" || m.department === filterDept;
     const matchSearch = [m.name, m.email, m.role].some(v => v.toLowerCase().includes(search.toLowerCase()));
     return matchDept && matchSearch;
@@ -779,7 +861,7 @@ function MemberPage({ members, setMembers, assets, setAssets }) {
     if (!form.name || !form.email) return;
     setMembers([...members, { id: "M" + Math.floor(Math.random() * 90000 + 10000), ...form }]);
     setAddOpen(false);
-    setForm({ name: "", department: DEPARTMENTS[0], email: "", role: "팀원" });
+    setForm({ name: "", department: DEPARTMENTS[0], email: "", role: "사원" });
   };
 
   const saveMember = () => {
@@ -834,10 +916,10 @@ function MemberPage({ members, setMembers, assets, setAssets }) {
   return (
     <main style={{ flex: 1, padding: "36px 40px", overflowY: "auto" }}>
       <PageHeader title="구성원 관리" subtitle="부서별 구성원과 배정 자산을 관리하세요"
-        action={<Btn onClick={() => setAddOpen(true)}>+ 구성원 등록</Btn>} />
+        action={permission !== "viewer" ? <Btn onClick={() => setAddOpen(true)}>+ 구성원 등록</Btn> : null} />
       <SummaryCards items={[
-        { label: "전체", value: members.length, color: C.primary },
-        ...DEPARTMENTS.map(d => ({ label: d, value: members.filter(m => m.department === d).length, color: C.purple }))
+        { label: "전체", value: visibleMembers.length, color: C.primary },
+        ...DEPARTMENTS.map(d => ({ label: d, value: visibleMembers.filter(m => m.department === d).length, color: C.purple }))
       ]} />
       <SearchFilter value={search} onChange={setSearch}
         filters={["전체", ...DEPARTMENTS]} active={filterDept} onFilter={setFilterDept} activeColor={C.purple} />
@@ -873,7 +955,7 @@ function MemberPage({ members, setMembers, assets, setAssets }) {
               <div style={{ borderTop: `1px solid ${C.bg}`, paddingTop: 12 }}>
                 <p style={{ margin: "0 0 6px", fontSize: 11, color: C.textLight, fontWeight: 600 }}>배정 자산 {myAssets.length}개</p>
                 {myAssets.length > 0
-                  ? myAssets.map(a => <span key={a.id} style={{ display: "inline-block", background: C.bg, color: "#475569", fontSize: 11, padding: "2px 8px", borderRadius: 6, marginRight: 4, marginBottom: 4 }}>{a.name}</span>)
+                  ? myAssets.map(a => <span key={a.id} style={{ display: "inline-block", background: C.bg, color: "#475569", fontSize: 11, padding: "2px 8px", borderRadius: 6, marginRight: 4, marginBottom: 4 }}>{a.name} ({a.type || "기타"})</span>)
                   : <p style={{ margin: 0, fontSize: 12, color: "#CBD5E1" }}>배정된 자산 없음</p>}
               </div>
             </div>
@@ -887,7 +969,7 @@ function MemberPage({ members, setMembers, assets, setAssets }) {
             <InputField label="이름" value={form.name} onChange={v => setForm({ ...form, name: v })} />
             <InputField label="이메일" value={form.email} onChange={v => setForm({ ...form, email: v })} type="email" />
             <SelectField label="부서" value={form.department} onChange={v => setForm({ ...form, department: v })} options={DEPARTMENTS} />
-            <InputField label="역할" value={form.role} onChange={v => setForm({ ...form, role: v })} />
+            <SelectField label="직급" value={form.role} onChange={v => setForm({ ...form, role: v })} options={ROLES} />
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 8 }}>
               <Btn variant="ghost" onClick={() => setAddOpen(false)}>취소</Btn>
               <Btn onClick={addMember}>등록</Btn>
@@ -903,7 +985,21 @@ function MemberPage({ members, setMembers, assets, setAssets }) {
               <InputField label="이름" value={editForm.name} onChange={v => setEditForm({ ...editForm, name: v })} />
               <InputField label="이메일" value={editForm.email} onChange={v => setEditForm({ ...editForm, email: v })} type="email" />
               <SelectField label="부서" value={editForm.department} onChange={v => setEditForm({ ...editForm, department: v })} options={DEPARTMENTS} />
-              <InputField label="역할" value={editForm.role} onChange={v => setEditForm({ ...editForm, role: v })} />
+              <SelectField label="직급" value={editForm.role} onChange={v => setEditForm({ ...editForm, role: v })} options={ROLES} />
+              {permission === "admin" && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <label style={{ fontSize: 12, color: C.textMuted, fontWeight: 600 }}>시스템 권한</label>
+                <select
+                  value={editForm.permission || ""}
+                  onChange={e => setEditForm({ ...editForm, permission: e.target.value })}
+                  style={{ border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 12px", fontSize: 14, color: C.text, outline: "none", background: "#fff" }}>
+                  <option value="">없음 (읽기 전용)</option>
+                  <option value="viewer">viewer — 자기 부서 조회만</option>
+                  <option value="manager">manager — 자기 부서 관리</option>
+                  <option value="admin">admin — 전체 관리</option>
+                </select>
+              </div>
+            )}
               <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 8 }}>
                 <Btn variant="ghost" onClick={() => setEditMode(false)}>취소</Btn>
                 <Btn onClick={saveMember}>저장</Btn>
@@ -924,7 +1020,15 @@ function MemberPage({ members, setMembers, assets, setAssets }) {
                 <Field label="사번" value={selected.id} />
                 <Field label="이메일" value={selected.email} />
                 <Field label="부서" value={selected.department} />
-                <Field label="역할" value={selected.role} />
+                <Field label="직급" value={selected.role} />
+                {permission === "admin" && (
+                  <Field label="시스템 권한" value={
+                    selected.permission === "admin" ? "admin — 전체 관리" :
+                    selected.permission === "manager" ? "manager — 자기 부서 관리" :
+                    selected.permission === "viewer" ? "viewer — 자기 부서 조회만" :
+                    "없음 (읽기 전용)"
+                  } />
+                )}
               </div>
               <div style={{ background: C.bg, borderRadius: 10, padding: 16, marginBottom: 20 }}>
                 <p style={{ margin: "0 0 10px", fontSize: 13, fontWeight: 600, color: "#475569" }}>배정 자산</p>
@@ -937,10 +1041,39 @@ function MemberPage({ members, setMembers, assets, setAssets }) {
                   ))
                   : <p style={{ margin: 0, fontSize: 13, color: "#CBD5E1" }}>배정된 자산 없음</p>}
               </div>
-              <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-                <Btn variant="danger" onClick={deleteMember}>삭제</Btn>
-                <Btn onClick={() => { setEditForm({ ...selected }); setEditMode(true); }}>수정</Btn>
-              </div>
+              {/* 자산 이력 섹션 */}
+              <div style={{ background: C.bg, borderRadius: 10, padding: 16, marginBottom: 20 }}>
+                <p style={{ margin: "0 0 10px", fontSize: 13, fontWeight: 600, color: "#475569" }}>자산 이력</p>
+                {(() => {
+                  const memberHistory = history
+                    .filter(h => h.from === selected.name || h.to === selected.name)
+                    .sort((a, b) => b.date.localeCompare(a.date));
+                  return memberHistory.length > 0
+                    ? memberHistory.map(h => (
+                      <div key={h.id} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8, flexWrap: "wrap" }}>
+                        <HistoryBadge type={h.type} />
+                        <span style={{ fontSize: 13, color: C.text, fontWeight: 500, flex: 1, minWidth: 100 }}>{h.assetName}</span>
+                        <span style={{ fontSize: 12, color: C.textMuted }}>{displayUser(h.from)} → {displayUser(h.to)}</span>
+                        <span style={{ fontSize: 12, color: C.textLight, whiteSpace: "nowrap" }}>{displayDate(h.date)}</span>
+                      </div>
+                    ))
+                    : <p style={{ margin: 0, fontSize: 13, color: "#CBD5E1" }}>이력 없음</p>;
+                })()}
+              </div>      
+              {permission !== "viewer" && (
+                <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+                  <Btn variant="danger" onClick={deleteMember}>삭제</Btn>
+                  <Btn onClick={() => {
+                    setEditForm({
+                      ...selected,
+                      purchaseDate: selected.purchaseDate && selected.purchaseDate !== "-"
+                        ? selected.purchaseDate.slice(0, 10)
+                        : "",
+                    });
+                    setEditMode(true);
+                  }}>수정</Btn>
+                </div>
+              )}
             </div>
           )}
         </Modal>
@@ -950,18 +1083,30 @@ function MemberPage({ members, setMembers, assets, setAssets }) {
 }
 
 // ── 이력 관리 ──
-function HistoryPage({ history }) {
+function HistoryPage({ history, permission, userDept, assets }) {
+  // 부서장/뷰어면 자기 부서 자산의 이력만
+  const visibleHistory = permission === "admin"
+    ? history
+    : history.filter(h => assets.filter(a => a.department === userDept).some(a => a.id === h.assetId));
   const [filterType, setFilterType] = useState("전체");
   const [search, setSearch] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const PER_PAGE = 15;
-  useEffect(() => { setCurrentPage(1); }, [search, filterType]);
-  const base = history.filter(h => {
+
+  useEffect(() => { setCurrentPage(1); }, [search, filterType, dateFrom, dateTo]);
+
+  const base = visibleHistory.filter(h => {
     const matchType = filterType === "전체" || h.type === filterType;
     const matchSearch = [h.assetName, h.assetId, h.from, h.to, h.note].some(v =>
       v?.toLowerCase().includes(search.toLowerCase())
     );
-    return matchType && matchSearch;
+    // 날짜 범위 필터 — h.date는 'YYYY-MM-DD HH:mm:ss.mmm' 형식이므로 앞 10자리만 비교
+    const hDate = h.date ? h.date.slice(0, 10) : "";
+    const matchFrom = dateFrom ? hDate >= dateFrom : true;
+    const matchTo = dateTo ? hDate <= dateTo : true;
+    return matchType && matchSearch && matchFrom && matchTo;
   });
 
   const { sorted, sortKey, sortDir, handleSort } = useSort(base, "date");
@@ -977,19 +1122,54 @@ function HistoryPage({ history }) {
     { label: "날짜", key: "date" },
   ];
 
+  const hasDateFilter = dateFrom || dateTo;
+
   return (
     <main style={{ flex: 1, padding: "36px 40px", overflowY: "auto" }}>
       <PageHeader title="배정/반납 이력" subtitle="자산의 배정 및 반납 기록을 확인하세요" />
       <SummaryCards items={[
-        { label: "전체 이력", value: history.length, color: C.primary },
-        { label: "배정", value: history.filter(h => h.type === "배정").length, color: "#1D4ED8" },
-        { label: "반납", value: history.filter(h => h.type === "반납").length, color: "#92400E" },
-        { label: "입고", value: history.filter(h => h.type === "입고").length, color: "#065F46" },
-        { label: "상태변경", value: history.filter(h => h.type === "상태변경").length, color: "#6D28D9" },
-        { label: "폐기", value: history.filter(h => h.type === "폐기").length, color: "#991B1B" },
+        { label: "전체 이력", value: visibleHistory.length, color: C.primary },
+        { label: "배정", value: visibleHistory.filter(h => h.type === "배정").length, color: "#1D4ED8" },
+        { label: "반납", value: visibleHistory.filter(h => h.type === "반납").length, color: "#92400E" },
+        { label: "입고", value: visibleHistory.filter(h => h.type === "입고").length, color: "#065F46" },
+        { label: "상태변경", value: visibleHistory.filter(h => h.type === "상태변경").length, color: "#6D28D9" },
+        { label: "폐기", value: visibleHistory.filter(h => h.type === "폐기").length, color: "#991B1B" },
       ]} />
+
+      {/* 구분 필터 + 검색 */}
       <SearchFilter value={search} onChange={setSearch}
         filters={HISTORY_TYPES} active={filterType} onFilter={setFilterType} />
+
+      {/* 날짜 범위 필터 */}
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
+        <span style={{ fontSize: 13, fontWeight: 600, color: C.textMuted }}>기간</span>
+        <input
+          type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
+          style={{ border: `1px solid ${C.border}`, borderRadius: 8, padding: "8px 12px", fontSize: 13, color: C.text, outline: "none", background: C.card, cursor: "pointer" }}
+          onFocus={e => e.target.style.borderColor = C.primary}
+          onBlur={e => e.target.style.borderColor = C.border}
+        />
+        <span style={{ fontSize: 13, color: C.textMuted }}>~</span>
+        <input
+          type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
+          style={{ border: `1px solid ${C.border}`, borderRadius: 8, padding: "8px 12px", fontSize: 13, color: C.text, outline: "none", background: C.card, cursor: "pointer" }}
+          onFocus={e => e.target.style.borderColor = C.primary}
+          onBlur={e => e.target.style.borderColor = C.border}
+        />
+        {hasDateFilter && (
+          <button
+            onClick={() => { setDateFrom(""); setDateTo(""); }}
+            style={{ padding: "8px 14px", borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: "pointer", border: `1px solid ${C.border}`, background: C.card, color: C.danger }}>
+            초기화
+          </button>
+        )}
+        {hasDateFilter && (
+          <span style={{ fontSize: 13, color: C.textMuted }}>
+            {totalFiltered}건 검색됨
+          </span>
+        )}
+      </div>
+
       <SortableTable
         headers={HISTORY_HEADERS}
         sortKey={sortKey} sortDir={sortDir} onSort={handleSort}
@@ -1028,16 +1208,32 @@ export default function App() {
 
   const fetchAll = async () => {
     setLoading(true);
-    const [{ data: a }, { data: m }, { data: h }] = await Promise.all([
-      supabase.from("assets").select("*"),
-      supabase.from("members").select("*"),
-      supabase.from("history").select("*").order("date", { ascending: false }),
-    ]);
-    setAssetsState(a || []);
-    setMembersState(m || []);
-    setHistoryState(h || []);
-    setLoading(false);
+    try {
+      const [{ data: a, error: e1 }, { data: m, error: e2 }, { data: h, error: e3 }] = await Promise.all([
+        supabase.from("assets").select("*"),
+        supabase.from("members").select("*"),
+        supabase.from("history").select("*").order("date", { ascending: false }),
+      ]);
+      if (e1 || e2 || e3) {
+        alert("데이터를 불러오는 중 오류가 발생했습니다. 새로고침을 시도해 주세요.");
+        setLoading(false);
+        return;
+      }
+      setAssetsState(a || []);
+      setMembersState(m || []);
+      setHistoryState(h || []);
+    } catch (e) {
+      alert("네트워크 오류가 발생했습니다. 인터넷 연결을 확인해 주세요.");
+    } finally {
+      setLoading(false);
+    }
   };
+
+  // 로그인한 사용자 정보 파악
+  const currentUser = members.find(m => m.email === session?.user?.email) || null;
+  // permission이 없거나 admin이면 총무관리자, 아니면 해당 permission 사용
+  const permission = currentUser?.permission || "admin";
+  const userDept = currentUser?.department || null;  
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -1108,17 +1304,28 @@ export default function App() {
 
   // ── members 변경 시 Supabase 동기화 ──
   const updateMembers = async (newMembers) => {
-    setMembersState(newMembers);
     const prev = members;
+    setMembersState(newMembers);
     const added   = newMembers.filter(n => !prev.find(p => p.id === n.id));
     const removed = prev.filter(p => !newMembers.find(n => n.id === p.id));
     const updated = newMembers.filter(n => {
       const old = prev.find(p => p.id === n.id);
       return old && JSON.stringify(old) !== JSON.stringify(n);
     });
-    if (added.length)   await supabase.from("members").insert(added);
-    if (removed.length) await supabase.from("members").delete().in("id", removed.map(r => r.id));
-    if (updated.length) await Promise.all(updated.map(u => supabase.from("members").update(u).eq("id", u.id)));
+    if (added.length) {
+      const { error } = await supabase.from("members").insert(added);
+      if (error) { setMembersState(prev); alert("구성원 등록 실패: " + error.message); return; }
+    }
+    if (removed.length) {
+      const { error } = await supabase.from("members").delete().in("id", removed.map(r => r.id));
+      if (error) { setMembersState(prev); alert("구성원 삭제 실패: " + error.message); return; }
+    }
+    if (updated.length) {
+      for (const u of updated) {
+        const { error } = await supabase.from("members").update(u).eq("id", u.id);
+        if (error) { setMembersState(prev); alert("구성원 수정 실패: " + error.message); return; }
+      }
+    }
   };
 
   const menuItems = [
@@ -1180,7 +1387,8 @@ export default function App() {
     <div style={{ display: "flex", height: "100vh", fontFamily: "'Pretendard', 'Apple SD Gothic Neo', sans-serif", background: C.bg }}>
       <aside style={{ width: 224, background: C.sidebar, display: "flex", flexDirection: "column", flexShrink: 0 }}>
         <div style={{ padding: "28px 20px 24px", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div onClick={() => setPage("dashboard")}
+            style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
             <div style={{ width: 32, height: 32, borderRadius: 8, background: C.primary, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>📦</div>
             <span style={{ color: "#fff", fontWeight: 800, fontSize: 17, letterSpacing: "-0.3px" }}>DURAE Assets</span>
           </div>
@@ -1201,6 +1409,19 @@ export default function App() {
             );
           })}
         </nav>
+        <div style={{ padding: "12px 20px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <div style={{ width: 28, height: 28, borderRadius: "50%", background: permission === "admin" ? C.primary : permission === "manager" ? C.purple : "rgba(255,255,255,0.1)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, color: "#fff" }}>
+              {currentUser ? currentUser.name[0] : "A"}
+            </div>
+            <div>
+              <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: "#fff" }}>{currentUser ? currentUser.name : "관리자"}</p>
+              <p style={{ margin: 0, fontSize: 10, color: "rgba(255,255,255,0.4)" }}>
+                {permission === "admin" ? "총무관리자" : permission === "manager" ? "부서장" : "구성원"}
+              </p>
+            </div>
+          </div>
+        </div>
         <div style={{ padding: "16px 20px", borderTop: "1px solid rgba(255,255,255,0.06)" }}>
           <button
             onClick={fetchAll}
@@ -1217,11 +1438,10 @@ export default function App() {
           <p style={{ margin: 0, fontSize: 11, color: "rgba(255,255,255,0.2)" }}>DURAE Assets v1.0.0</p>
         </div>
       </aside>
-
-      {page === "dashboard" && <Dashboard assets={assets} members={members} history={history} />}
-      {page === "assets"    && <AssetPage assets={assets} setAssets={updateAssets} history={history} members={members} />}
-      {page === "members"   && <MemberPage members={members} setMembers={updateMembers} assets={assets} setAssets={updateAssets} />}
-      {page === "history"   && <HistoryPage history={history} />}
+      {page === "dashboard" && <Dashboard assets={assets} members={members} history={history} permission={permission} userDept={userDept} />}
+      {page === "assets"    && <AssetPage assets={assets} setAssets={updateAssets} history={history} members={members} permission={permission} userDept={userDept} />}
+      {page === "members"   && <MemberPage members={members} setMembers={updateMembers} assets={assets} setAssets={updateAssets} history={history} permission={permission} userDept={userDept} />}
+      {page === "history" && <HistoryPage history={history} permission={permission} userDept={userDept} assets={assets} />}
     </div>
   );
 }
