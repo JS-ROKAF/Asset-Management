@@ -8,7 +8,13 @@ import { supabase } from "./supabase";
 import { exportToExcel } from "./exportExcel";
 
 const DEPARTMENTS = ["개발팀", "디자인팀", "마케팅팀", "HR팀", "경영지원팀"];
-const STATUS_OPTIONS = ["사용중", "미사용", "수리중", "분실"];
+const ASSET_STATUS = {
+  IN_USE: "사용중",
+  UNUSED: "미사용",
+  REPAIR: "수리중",
+  LOST: "분실"
+};
+const STATUS_OPTIONS = Object.values(ASSET_STATUS);
 const STATUS_COLORS = { "사용중": "#10B981", "미사용": "#94A3B8", "수리중": "#EF4444", "분실": "#F97316" };
 const HISTORY_TYPES = ["전체", "배정", "반납", "입고", "상태변경", "폐기"];
 const HISTORY_STYLES = {
@@ -24,6 +30,16 @@ const ROLES = [
   "연구원", "주임연구원", "선임연구원", "책임연구원", "수석연구원",
   "원장", "소장", "본부장", "전무", "부사장", "대표"
 ];
+const REQUEST_TYPES = ["반납요청", "배정요청"];
+const REQUEST_STYLES = {
+  "반납요청": { background: "#FEF3C7", color: "#92400E" },
+  "배정요청": { background: "#DBEAFE", color: "#1D4ED8" },
+};
+const REQUEST_STATUS_STYLES = {
+  "대기중": { background: "#F1F5F9", color: "#64748B" },
+  "승인":   { background: "#D1FAE5", color: "#065F46" },
+  "거절":   { background: "#FEE2E2", color: "#991B1B" },
+};
 // 사용자 표시용 헬퍼 — "-"를 "미배정"으로 변환
 const displayUser = (user) => (!user || user === "-") ? "미배정" : user;
 
@@ -75,6 +91,12 @@ const Icon = ({ type, active }) => {
         <polyline points="12 6 12 12 16 14"/>
       </svg>
     ),
+    requests: (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M9 11l3 3L22 4"/>
+        <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+      </svg>
+    ),
   };
   return icons[type] || null;
 };
@@ -93,6 +115,16 @@ const StatusBadge = ({ status }) => {
 const HistoryBadge = ({ type }) => {
   const style = HISTORY_STYLES[type] || { background: "#F1F5F9", color: "#64748B" };
   return <span style={{ ...style, padding: "3px 10px", borderRadius: 99, fontSize: 12, fontWeight: 600 }}>{type}</span>;
+};
+
+const RequestBadge = ({ type }) => {
+  const style = REQUEST_STYLES[type] || { background: "#F1F5F9", color: "#64748B" };
+  return <span style={{ ...style, padding: "3px 10px", borderRadius: 99, fontSize: 12, fontWeight: 600 }}>{type}</span>;
+};
+
+const RequestStatusBadge = ({ status }) => {
+  const style = REQUEST_STATUS_STYLES[status] || { background: "#F1F5F9", color: "#64748B" };
+  return <span style={{ ...style, padding: "3px 10px", borderRadius: 99, fontSize: 12, fontWeight: 600 }}>{status}</span>;
 };
 
 const Field = ({ label, value }) => (
@@ -533,7 +565,7 @@ function Dashboard({ assets, members, history, permission, userDept }) {
 }
 
 // ── 자산관리 ──
-function AssetPage({ assets, setAssets, history, members, permission, userDept }) {
+function AssetPage({ assets, setAssets, history, members, permission, userDept, requests, setRequests, currentUser }) {
   // 부서장/뷰어면 자기 부서 자산만
   const visibleAssets = permission === "admin" ? assets : assets.filter(a => a.department === userDept);
   const [addOpen, setAddOpen] = useState(false);
@@ -1180,12 +1212,49 @@ function AssetPage({ assets, setAssets, history, members, permission, userDept }
                   ))
                   : <p style={{ margin: 0, fontSize: 13, color: "#CBD5E1" }}>이력 없음</p>}
               </div>
-              {permission !== "viewer" && (
-                <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-                  <Btn variant="danger" onClick={deleteAsset}>삭제</Btn>
-                  <Btn onClick={() => { setEditForm({ ...selected }); setEditMode(true); }}>수정</Btn>
-                </div>
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+              {/* viewer/manager: 요청 버튼 */}
+              {permission !== "admin" && (
+                <>
+                  <Btn variant="ghost" onClick={() => {
+                    if (!window.confirm(`'${selected.name}' 반납을 요청할까요?`)) return;
+                    const req = {
+                      type: "반납요청",
+                      assetId: selected.id,
+                      assetName: selected.name,
+                      requesterId: currentUser?.id || "-",
+                      requesterName: currentUser?.name || "-",
+                      targetUser: "-",
+                      status: "대기중",
+                      note: "반납 요청",
+                      date: toKST(),
+                      resolvedNote: "-",
+                      resolvedDate: "-",
+                    };
+                    supabase.from("requests").insert(req).then(({ error }) => {
+                      if (error) { alert("요청 실패: " + error.message); return; }
+                      setRequests([req, ...requests]);
+                      alert("반납 요청이 접수되었습니다.");
+                      setSelected(null);
+                    });
+                  }}>반납 요청</Btn>
+                </>
               )}
+              {/* admin/manager: 수정/삭제 버튼 */}
+              {permission !== "viewer" && (
+                <>
+                  <Btn variant="danger" onClick={deleteAsset}>삭제</Btn>
+                  <Btn onClick={() => {
+                    setEditForm({
+                      ...selected,
+                      purchaseDate: selected.purchaseDate && selected.purchaseDate !== "-"
+                        ? selected.purchaseDate.slice(0, 10) : "",
+                    });
+                    setEditMode(true);
+                  }}>수정</Btn>
+                </>
+              )}
+            </div>
             </div>
           )}
         </Modal>
@@ -1431,12 +1500,7 @@ function MemberPage({ members, setMembers, assets, setAssets, history, permissio
                 <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
                   <Btn variant="danger" onClick={deleteMember}>삭제</Btn>
                   <Btn onClick={() => {
-                    setEditForm({
-                      ...selected,
-                      purchaseDate: selected.purchaseDate && selected.purchaseDate !== "-"
-                        ? selected.purchaseDate.slice(0, 10)
-                        : "",
-                    });
+                    setEditForm({ ...selected });
                     setEditMode(true);
                   }}>수정</Btn>
                 </div>
@@ -1561,6 +1625,137 @@ function HistoryPage({ history, permission, userDept, assets }) {
   );
 }
 
+// ── 요청 관리 ──
+function RequestPage({ requests, setRequests, assets, setAssets, members, permission, userDept, currentUser }) {
+  const [filterStatus, setFilterStatus] = useState("전체");
+  const [resolveOpen, setResolveOpen] = useState(false);
+  const [selectedReq, setSelectedReq] = useState(null);
+  const [resolveNote, setResolveNote] = useState("");
+
+  // 부서장은 자기 부서 자산 요청만
+  const visibleRequests = permission === "admin"
+    ? requests
+    : requests.filter(r => {
+        const asset = assets.find(a => a.id === r.assetId);
+        return asset?.department === userDept;
+      });
+
+  const filtered = visibleRequests.filter(r =>
+    filterStatus === "전체" || r.status === filterStatus
+  );
+
+  const pendingCount = visibleRequests.filter(r => r.status === "대기중").length;
+
+  const handleResolve = async (approve) => {
+    if (!selectedReq) return;
+    const updatedReq = {
+      ...selectedReq,
+      status: approve ? "승인" : "거절",
+      resolvedNote: resolveNote || (approve ? "승인 처리" : "거절 처리"),
+      resolvedDate: toKST(),
+    };
+
+    const { error } = await supabase.from("requests").update(updatedReq).eq("id", selectedReq.id);
+    if (error) { alert("처리 실패: " + error.message); return; }
+
+    // 승인 시 자산 상태 변경
+    if (approve && selectedReq.type === "반납요청") {
+      const asset = assets.find(a => a.id === selectedReq.assetId);
+      if (asset) {
+        const updatedAsset = { ...asset, user: "-", status: "미사용" };
+        const histories = [makeHistory("반납", updatedAsset, asset.user, "-", `요청 승인: ${resolveNote || "반납 처리"}`)];
+        setAssets(assets.map(a => a.id === asset.id ? updatedAsset : a), histories);
+      }
+    }
+
+    setRequests(requests.map(r => r.id === selectedReq.id ? updatedReq : r));
+    setResolveOpen(false);
+    setSelectedReq(null);
+    setResolveNote("");
+  };
+
+  return (
+    <main style={{ flex: 1, padding: "36px 40px", overflowY: "auto" }}>
+      <PageHeader title="요청 관리" subtitle="자산 반납/배정 요청을 승인하거나 거절하세요" />
+      <SummaryCards items={[
+        { label: "전체 요청", value: visibleRequests.length, color: C.primary },
+        { label: "대기중", value: visibleRequests.filter(r => r.status === "대기중").length, color: "#F97316" },
+        { label: "승인", value: visibleRequests.filter(r => r.status === "승인").length, color: "#10B981" },
+        { label: "거절", value: visibleRequests.filter(r => r.status === "거절").length, color: C.danger },
+      ]} />
+
+      {/* 상태 필터 */}
+      <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
+        {["전체", "대기중", "승인", "거절"].map(s => (
+          <button key={s} onClick={() => setFilterStatus(s)}
+            style={{ padding: "9px 16px", borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: "pointer",
+              border: `1px solid ${C.border}`,
+              background: filterStatus === s ? C.primary : C.card,
+              color: filterStatus === s ? "#fff" : C.textMuted, transition: "all 0.15s" }}>
+            {s}
+          </button>
+        ))}
+      </div>
+
+      {/* 요청 목록 */}
+      <div style={{ background: C.card, borderRadius: 12, boxShadow: "0 1px 4px rgba(0,0,0,0.06)", overflow: "hidden" }}>
+        {filtered.length === 0 ? (
+          <p style={{ padding: 40, textAlign: "center", fontSize: 14, color: "#CBD5E1", margin: 0 }}>요청이 없습니다</p>
+        ) : filtered.map((r, i) => (
+          <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 16, padding: "16px 20px",
+            borderBottom: i < filtered.length - 1 ? `1px solid ${C.bg}` : "none",
+            background: r.status === "대기중" ? "#FFFBEB" : "transparent" }}>
+            <RequestBadge type={r.type} />
+            <div style={{ flex: 1 }}>
+              <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: C.text }}>{r.assetName}</p>
+              <p style={{ margin: "2px 0 0", fontSize: 12, color: C.textMuted }}>
+                요청자: {r.requesterName} · {displayDate(r.date)}
+              </p>
+              {r.note && r.note !== "-" && (
+                <p style={{ margin: "2px 0 0", fontSize: 12, color: C.textLight }}>사유: {r.note}</p>
+              )}
+            </div>
+            <RequestStatusBadge status={r.status} />
+            {r.status === "대기중" && permission !== "viewer" && (
+              <Btn small onClick={() => { setSelectedReq(r); setResolveOpen(true); }}>처리</Btn>
+            )}
+            {r.status !== "대기중" && r.resolvedNote && r.resolvedNote !== "-" && (
+              <span style={{ fontSize: 12, color: C.textLight }}>처리사유: {r.resolvedNote}</span>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* 처리 모달 */}
+      {resolveOpen && selectedReq && (
+        <Modal title="요청 처리" onClose={() => { setResolveOpen(false); setResolveNote(""); }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            <div style={{ background: C.bg, borderRadius: 8, padding: 14 }}>
+              <p style={{ margin: 0, fontSize: 13, color: C.textMuted }}>요청 유형</p>
+              <p style={{ margin: "4px 0 0", fontSize: 15, fontWeight: 600, color: C.text }}>{selectedReq.type}</p>
+              <p style={{ margin: "8px 0 0", fontSize: 13, color: C.textMuted }}>자산명</p>
+              <p style={{ margin: "4px 0 0", fontSize: 15, fontWeight: 600, color: C.text }}>{selectedReq.assetName}</p>
+              <p style={{ margin: "8px 0 0", fontSize: 13, color: C.textMuted }}>요청자</p>
+              <p style={{ margin: "4px 0 0", fontSize: 14, color: C.text }}>{selectedReq.requesterName}</p>
+            </div>
+            <InputField
+              label="처리 사유 (선택)"
+              value={resolveNote}
+              onChange={v => setResolveNote(v)}
+              placeholder="승인/거절 사유를 입력하세요"
+            />
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 8 }}>
+              <Btn variant="ghost" onClick={() => { setResolveOpen(false); setResolveNote(""); }}>취소</Btn>
+              <Btn variant="danger" onClick={() => handleResolve(false)}>거절</Btn>
+              <Btn onClick={() => handleResolve(true)}>승인</Btn>
+            </div>
+          </div>
+        </Modal>
+      )}
+    </main>
+  );
+}
+
 // ── 메인 App ──
 export default function App() {
   const [session, setSession] = useState(null);
@@ -1570,18 +1765,20 @@ export default function App() {
   const [assets, setAssetsState] = useState([]);
   const [members, setMembersState] = useState([]);
   const [history, setHistoryState] = useState([]);
+  const [requests, setRequestsState] = useState([]);
   const [page, setPage] = useState("dashboard");
   const [loading, setLoading] = useState(true);
 
   const fetchAll = async () => {
     setLoading(true);
     try {
-      const [{ data: a, error: e1 }, { data: m, error: e2 }, { data: h, error: e3 }] = await Promise.all([
-        supabase.from("assets").select("*"),
-        supabase.from("members").select("*"),
-        supabase.from("history").select("*").order("date", { ascending: false }),
-      ]);
-      if (e1 || e2 || e3) {
+      const [{ data: a, error: e1 }, { data: m, error: e2 }, { data: h, error: e3 }, { data: r, error: e4 }] = await Promise.all([
+      supabase.from("assets").select("*"),
+      supabase.from("members").select("*"),
+      supabase.from("history").select("*").order("date", { ascending: false }),
+      supabase.from("requests").select("*").order("date", { ascending: false }),
+    ]);
+    if (e1 || e2 || e3 || e4) {
         alert("데이터를 불러오는 중 오류가 발생했습니다. 새로고침을 시도해 주세요.");
         setLoading(false);
         return;
@@ -1589,6 +1786,7 @@ export default function App() {
       setAssetsState(a || []);
       setMembersState(m || []);
       setHistoryState(h || []);
+      setRequestsState(r || []);
     } catch (e) {
       alert("네트워크 오류가 발생했습니다. 인터넷 연결을 확인해 주세요.");
     } finally {
@@ -1700,6 +1898,7 @@ export default function App() {
     { key: "assets",    icon: "assets",    label: "자산관리" },
     { key: "members",   icon: "members",   label: "구성원 관리" },
     { key: "history",   icon: "history",   label: "이력 관리" },
+    { key: "requests",  icon: "requests",  label: "요청 관리" },
   ];
 
   if (loading) return (
@@ -1771,7 +1970,12 @@ export default function App() {
                 onMouseLeave={e => { if (!active) e.currentTarget.style.background = "transparent"; }}>
                 <Icon type={icon} active={active} />
                 <span style={{ fontSize: 14, fontWeight: active ? 600 : 400, color: active ? "#fff" : "rgba(255,255,255,0.5)", letterSpacing: "-0.1px" }}>{label}</span>
-                {active && <div style={{ marginLeft: "auto", width: 6, height: 6, borderRadius: "50%", background: C.primary }} />}
+                {key === "requests" && requests.filter(r => r.status === "대기중").length > 0 && (
+                  <span style={{ marginLeft: "auto", background: "#F97316", color: "#fff", fontSize: 10, fontWeight: 700, padding: "2px 6px", borderRadius: 99 }}>
+                    {requests.filter(r => r.status === "대기중").length}
+                  </span>
+                )}
+                {active && key !== "requests" && <div style={{ marginLeft: "auto", width: 6, height: 6, borderRadius: "50%", background: C.primary }} />}
               </div>
             );
           })}
@@ -1806,9 +2010,10 @@ export default function App() {
         </div>
       </aside>
       {page === "dashboard" && <Dashboard assets={assets} members={members} history={history} permission={permission} userDept={userDept} />}
-      {page === "assets"    && <AssetPage assets={assets} setAssets={updateAssets} history={history} members={members} permission={permission} userDept={userDept} />}
+      {page === "assets" && <AssetPage assets={assets} setAssets={updateAssets} history={history} members={members} permission={permission} userDept={userDept} requests={requests} setRequests={setRequestsState} currentUser={currentUser} />}
       {page === "members"   && <MemberPage members={members} setMembers={updateMembers} assets={assets} setAssets={updateAssets} history={history} permission={permission} userDept={userDept} />}
       {page === "history" && <HistoryPage history={history} permission={permission} userDept={userDept} assets={assets} />}
+      {page === "requests"  && <RequestPage requests={requests} setRequests={setRequestsState} assets={assets} setAssets={updateAssets} members={members} permission={permission} userDept={userDept} currentUser={currentUser} />}
     </div>
   );
 }
