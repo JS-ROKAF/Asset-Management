@@ -320,6 +320,20 @@ const displayDate = (dateStr) => {
   return dateStr; // 'YYYY-MM-DD' 형식 레거시 그대로
 };
 
+const displayAge = (dateStr) => {
+  if (!dateStr || dateStr === "-") return "-";
+  const start = new Date(dateStr.slice(0, 10));
+  const today = new Date();
+  const diffMs = today - start;
+  if (isNaN(diffMs) || diffMs < 0) return "-";
+  const days = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  if (days < 30) return `${days}일`;
+  if (days < 365) return `${Math.floor(days / 30)}개월`;
+  const years = Math.floor(days / 365);
+  const months = Math.floor((days % 365) / 30);
+  return months > 0 ? `${years}년 ${months}개월` : `${years}년`;
+};
+
 const toKST = (offsetMs = 0) =>
   new Date(Date.now() + 9 * 60 * 60 * 1000 + offsetMs)
     .toISOString().replace('T', ' ').slice(0, 23); // 밀리초까지 포함
@@ -542,6 +556,29 @@ function Dashboard({ assets, members, history, permission, userDept }) {
               ))}
             </div>
           )}
+        </div>
+      )}
+
+      {/* 수리중/분실 자산 목록 */}
+      {(filteredAssets.filter(a => a.status === "수리중").length > 0 || filteredAssets.filter(a => a.status === "분실").length > 0) && (
+        <div style={{ background: C.card, borderRadius: 12, padding: 24, boxShadow: "0 1px 4px rgba(0,0,0,0.06)", marginBottom: 20 }}>
+          <h3 style={{ margin: "0 0 16px", fontSize: 15, fontWeight: 700, color: C.text }}>🔧 주의 필요 자산</h3>
+          {filteredAssets.filter(a => a.status === "수리중").map(a => (
+            <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 12px", background: "#FEF2F2", borderRadius: 8, marginBottom: 6 }}>
+              <StatusBadge status={a.status} />
+              <span style={{ fontSize: 13, color: C.text, fontWeight: 500, flex: 1 }}>{a.name}</span>
+              <span style={{ fontSize: 12, color: C.textMuted }}>{a.department || "-"}</span>
+              <span style={{ fontSize: 12, color: C.textLight }}>{displayUser(a.user)}</span>
+            </div>
+          ))}
+          {filteredAssets.filter(a => a.status === "분실").map(a => (
+            <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 12px", background: "#FFF7ED", borderRadius: 8, marginBottom: 6 }}>
+              <StatusBadge status={a.status} />
+              <span style={{ fontSize: 13, color: C.text, fontWeight: 500, flex: 1 }}>{a.name}</span>
+              <span style={{ fontSize: 12, color: C.textMuted }}>{a.department || "-"}</span>
+              <span style={{ fontSize: 12, color: C.textLight }}>{displayUser(a.user)}</span>
+            </div>
+          ))}
         </div>
       )}
 
@@ -795,8 +832,8 @@ function AssetPage({ assets, setAssets, history, members, permission, userDept, 
     { label: "취득일자", key: "purchaseDate" },
     { label: "취득금액", key: "purchaseCost" },
     { label: "구입처", key: "vendor" },
-    { label: "비고", key: "note" },
     { label: "등록일", key: "date" },
+    { label: "비고", key: "note" },
   ];
 
   // 2단 필터 (상태 + 부서)
@@ -1196,6 +1233,7 @@ function AssetPage({ assets, setAssets, history, members, permission, userDept, 
                   { label: "구입처", value: selected.vendor || "-" },
                   { label: "보증 만료일", value: selected.warrantyExpiry && selected.warrantyExpiry !== "-" ? selected.warrantyExpiry.slice(0, 10) : "-" },
                   { label: "등록일", value: displayDate(selected.date) },
+                  { label: "사용 기간", value: displayAge(selected.date) },
                   { label: "비고", value: selected.note || "-" },
                 ].map(({ label, value }) => <Field key={label} label={label} value={value} />)}
               </div>
@@ -1546,6 +1584,7 @@ function HistoryPage({ history, permission, userDept, assets }) {
 
   const HISTORY_HEADERS = [
     { label: "구분", key: "type" },
+    { label: "자산번호", key: "assetId" },
     { label: "자산명", key: "assetName" },
     { label: "이전 사용자", key: "from" },
     { label: "변경 후 사용자", key: "to" },
@@ -1610,6 +1649,7 @@ function HistoryPage({ history, permission, userDept, assets }) {
               onMouseEnter={e => e.currentTarget.style.background = "#F8FAFC"}
               onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
               <td style={{ padding: "14px 20px" }}><HistoryBadge type={h.type} /></td>
+              <td style={{ padding: "14px 20px", fontSize: 13, color: C.textMuted, whiteSpace: "nowrap" }}>{h.assetId}</td>
               <td style={{ padding: "14px 20px", fontSize: 14, color: C.text, fontWeight: 500 }}>{h.assetName}</td>
               <td style={{ padding: "14px 20px", fontSize: 14, color: C.textMuted }}>{displayUser(h.from)}</td>
               <td style={{ padding: "14px 20px", fontSize: 14, color: C.text, fontWeight: 500 }}>{displayUser(h.to)}</td>
@@ -1617,7 +1657,7 @@ function HistoryPage({ history, permission, userDept, assets }) {
               <td style={{ padding: "14px 20px", fontSize: 13, color: C.textLight }}>{displayDate(h.date)}</td>
             </tr>
           ))
-          : [<tr key="empty"><td colSpan={6} style={{ padding: "40px", textAlign: "center", fontSize: 14, color: "#CBD5E1" }}>이력이 없습니다</td></tr>]
+          : [<tr key="empty"><td colSpan={7} style={{ padding: "40px", textAlign: "center", fontSize: 14, color: "#CBD5E1" }}>이력이 없습니다</td></tr>]
         }
       />
       <Pagination total={totalFiltered} page={currentPage} perPage={PER_PAGE} onChange={setCurrentPage} />
