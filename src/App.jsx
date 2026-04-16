@@ -6,6 +6,7 @@ import {
 } from "recharts";
 import { supabase } from "./supabase";
 import { exportToExcel } from "./exportExcel";
+import { QRCodeSVG } from "qrcode.react";
 
 const DEPARTMENTS = ["개발팀", "디자인팀", "마케팅팀", "HR팀", "경영지원팀"];
 const ASSET_STATUS = {
@@ -95,6 +96,15 @@ const Icon = ({ type, active }) => {
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <path d="M9 11l3 3L22 4"/>
         <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+      </svg>
+    ),
+    inspections: (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+        <polyline points="14 2 14 8 20 8"/>
+        <line x1="16" y1="13" x2="8" y2="13"/>
+        <line x1="16" y1="17" x2="8" y2="17"/>
+        <polyline points="10 9 9 9 8 9"/>
       </svg>
     ),
   };
@@ -351,7 +361,7 @@ function makeHistory(type, asset, prevUser, nextUser, note, offsetMs = 0) {
 }
 
 // ── 대시보드 ──
-function Dashboard({ assets, members, history, permission, userDept }) {
+function Dashboard({ assets, members, history, permission, userDept, onNavigate }) {
 
   const filteredAssets = permission === "admin" ? assets : assets.filter(a => a.department === userDept);
   const filteredMembers = permission === "admin" ? members : members.filter(m => m.department === userDept);
@@ -532,7 +542,10 @@ function Dashboard({ assets, members, history, permission, userDept }) {
                 만료됨 ({expiredAssets.length}건)
               </p>
               {expiredAssets.map(a => (
-                <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 12px", background: "#FEF2F2", borderRadius: 8, marginBottom: 6 }}>
+                  <div key={a.id} onClick={() => onNavigate("assets")}
+                  style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 12px", background: "#FEF2F2", borderRadius: 8, marginBottom: 6, cursor: "pointer" }}
+                  onMouseEnter={e => e.currentTarget.style.opacity = "0.8"}
+                  onMouseLeave={e => e.currentTarget.style.opacity = "1"}>
                   <span style={{ fontSize: 13, color: C.text, fontWeight: 500, flex: 1 }}>{a.name}</span>
                   <span style={{ fontSize: 12, color: C.textMuted }}>{a.department || "-"}</span>
                   <span style={{ fontSize: 12, color: C.danger, fontWeight: 600 }}>{a.warrantyExpiry.slice(0, 10)} 만료</span>
@@ -548,7 +561,10 @@ function Dashboard({ assets, members, history, permission, userDept }) {
                 30일 이내 만료 임박 ({warningAssets.length}건)
               </p>
               {warningAssets.map(a => (
-                <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 12px", background: "#FFF7ED", borderRadius: 8, marginBottom: 6 }}>
+                 <div key={a.id} onClick={() => onNavigate("assets")}
+                  style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 12px", background: "#FFF7ED", borderRadius: 8, marginBottom: 6, cursor: "pointer" }}
+                  onMouseEnter={e => e.currentTarget.style.opacity = "0.8"}
+                  onMouseLeave={e => e.currentTarget.style.opacity = "1"}>
                   <span style={{ fontSize: 13, color: C.text, fontWeight: 500, flex: 1 }}>{a.name}</span>
                   <span style={{ fontSize: 12, color: C.textMuted }}>{a.department || "-"}</span>
                   <span style={{ fontSize: 12, color: "#F97316", fontWeight: 600 }}>{a.warrantyExpiry.slice(0, 10)} 만료 예정</span>
@@ -564,7 +580,10 @@ function Dashboard({ assets, members, history, permission, userDept }) {
         <div style={{ background: C.card, borderRadius: 12, padding: 24, boxShadow: "0 1px 4px rgba(0,0,0,0.06)", marginBottom: 20 }}>
           <h3 style={{ margin: "0 0 16px", fontSize: 15, fontWeight: 700, color: C.text }}>🔧 주의 필요 자산</h3>
           {filteredAssets.filter(a => a.status === "수리중").map(a => (
-            <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 12px", background: "#FEF2F2", borderRadius: 8, marginBottom: 6 }}>
+              <div key={a.id} onClick={() => onNavigate("assets")}
+              style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 12px", background: "#FEF2F2", borderRadius: 8, marginBottom: 6, cursor: "pointer" }}
+              onMouseEnter={e => e.currentTarget.style.opacity = "0.8"}
+              onMouseLeave={e => e.currentTarget.style.opacity = "1"}>
               <StatusBadge status={a.status} />
               <span style={{ fontSize: 13, color: C.text, fontWeight: 500, flex: 1 }}>{a.name}</span>
               <span style={{ fontSize: 12, color: C.textMuted }}>{a.department || "-"}</span>
@@ -572,8 +591,11 @@ function Dashboard({ assets, members, history, permission, userDept }) {
             </div>
           ))}
           {filteredAssets.filter(a => a.status === "분실").map(a => (
-            <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 12px", background: "#FFF7ED", borderRadius: 8, marginBottom: 6 }}>
-              <StatusBadge status={a.status} />
+              <div key={a.id} onClick={() => onNavigate("assets")}
+              style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 12px", background: "#FFF7ED", borderRadius: 8, marginBottom: 6, cursor: "pointer" }}
+              onMouseEnter={e => e.currentTarget.style.opacity = "0.8"}
+              onMouseLeave={e => e.currentTarget.style.opacity = "1"}>
+                        <StatusBadge status={a.status} />
               <span style={{ fontSize: 13, color: C.text, fontWeight: 500, flex: 1 }}>{a.name}</span>
               <span style={{ fontSize: 12, color: C.textMuted }}>{a.department || "-"}</span>
               <span style={{ fontSize: 12, color: C.textLight }}>{displayUser(a.user)}</span>
@@ -625,6 +647,8 @@ function AssetPage({ assets, setAssets, history, members, permission, userDept, 
   const [selectedIds, setSelectedIds] = useState([]); // 선택된 자산 id 목록
   const [bulkOpen, setBulkOpen] = useState(false);     // 일괄 배정 모달
   const [bulkUser, setBulkUser] = useState("");         // 일괄 배정할 사용자  
+  const [bulkStatusOpen, setBulkStatusOpen] = useState(false);
+  const [bulkStatus, setBulkStatus] = useState("수리중");
   const [importOpen, setImportOpen] = useState(false);   // 가져오기 모달
   const [importData, setImportData] = useState([]);       // 파싱된 데이터
   const [importError, setImportError] = useState("");     // 오류 메시지
@@ -712,6 +736,16 @@ function AssetPage({ assets, setAssets, history, members, permission, userDept, 
 
   const addAsset = () => {
     if (!form.name || !form.location) return;
+
+     // 시리얼 넘버 중복 체크
+    if (form.serial && form.serial !== "") {
+      const duplicate = assets.find(a => a.serial === form.serial && a.serial !== "-");
+      if (duplicate) {
+        alert(`시리얼 넘버 '${form.serial}'는 이미 등록된 자산(${duplicate.name})에 사용 중입니다.`);
+        return;
+      }
+    }
+
     const qty = Math.max(1, parseInt(form.quantity) || 1);
     const isAssigned = form.user && form.user !== "";
     if (isAssigned && !memberNames.includes(form.user)) {
@@ -764,6 +798,16 @@ function AssetPage({ assets, setAssets, history, members, permission, userDept, 
 
   const saveEdit = () => {
     const prev = assets.find(a => a.id === editForm.id);
+
+    // 시리얼 넘버 중복 체크 (자기 자신 제외)
+    if (editForm.serial && editForm.serial !== "" && editForm.serial !== "-") {
+      const duplicate = assets.find(a => a.serial === editForm.serial && a.id !== editForm.id && a.serial !== "-");
+      if (duplicate) {
+        alert(`시리얼 넘버 '${editForm.serial}'는 이미 등록된 자산(${duplicate.name})에 사용 중입니다.`);
+        return;
+      }
+    }
+
     let updated = { ...editForm };
     const histories = [];
 
@@ -977,6 +1021,7 @@ function AssetPage({ assets, setAssets, history, members, permission, userDept, 
             setAssets(updatedAssets, histories);
             setSelectedIds([]);
           }}>일괄 반납</Btn>
+          <Btn small variant="ghost" onClick={() => setBulkStatusOpen(true)}>일괄 상태 변경</Btn>
           <Btn small variant="ghost" onClick={() => setSelectedIds([])}>선택 해제</Btn>
         </div>
       )}
@@ -1029,6 +1074,56 @@ function AssetPage({ assets, setAssets, history, members, permission, userDept, 
                 setBulkUser("");
                 setSelectedIds([]);
               }}>배정</Btn>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* 일괄 상태 변경 모달 */}
+      {bulkStatusOpen && (
+        <Modal title={`일괄 상태 변경 (${selectedIds.length}개 자산)`} onClose={() => setBulkStatusOpen(false)}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            <div style={{ background: C.bg, borderRadius: 8, padding: 12, maxHeight: 160, overflowY: "auto" }}>
+              {selectedIds.map(id => {
+                const a = assets.find(a => a.id === id);
+                return a ? (
+                  <div key={id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                    <span style={{ fontSize: 13, color: C.text }}>{a.name}</span>
+                    <StatusBadge status={a.status} />
+                  </div>
+                ) : null;
+              })}
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <label style={{ fontSize: 12, color: C.textMuted, fontWeight: 600 }}>변경할 상태</label>
+              <select value={bulkStatus} onChange={e => setBulkStatus(e.target.value)}
+                style={{ border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 12px", fontSize: 14, color: C.text, outline: "none", background: "#fff" }}>
+                {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+            {(bulkStatus === "미사용" || bulkStatus === "수리중" || bulkStatus === "분실") && (
+              <div style={{ background: "#FEF3C7", borderRadius: 8, padding: "10px 14px", fontSize: 13, color: "#92400E" }}>
+                ⚠️ '{bulkStatus}'으로 변경하면 사용자가 자동으로 초기화됩니다.
+              </div>
+            )}
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 8 }}>
+              <Btn variant="ghost" onClick={() => setBulkStatusOpen(false)}>취소</Btn>
+              <Btn onClick={() => {
+                const histories = [];
+                const updatedAssets = assets.map(a => {
+                  if (!selectedIds.includes(a.id)) return a;
+                  let updated = { ...a, status: bulkStatus };
+                  if ((bulkStatus === "미사용" || bulkStatus === "수리중" || bulkStatus === "분실") && a.user !== "-") {
+                    histories.push(makeHistory("반납", updated, a.user, "-", `일괄 상태 변경(${bulkStatus})으로 인한 자동 반납`));
+                    updated.user = "-";
+                  }
+                  histories.push(makeHistory("상태변경", updated, updated.user, updated.user, `일괄 상태 변경: ${a.status} → ${bulkStatus}`));
+                  return updated;
+                });
+                setAssets(updatedAssets, histories);
+                setBulkStatusOpen(false);
+                setSelectedIds([]);
+              }}>변경</Btn>
             </div>
           </div>
         </Modal>
@@ -1216,83 +1311,107 @@ function AssetPage({ assets, setAssets, history, members, permission, userDept, 
               </div>
             </div>
           ) : (
-            <div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 20 }}>
-                {[
-                  { label: "자산번호", value: selected.id },
-                  { label: "유형", value: selected.type || "기타" },
-                  { label: "자산명", value: selected.name },
-                  { label: "모델명", value: selected.model || "-" },
-                  { label: "시리얼 넘버", value: selected.serial || "-" },
-                  { label: "상태", value: <StatusBadge status={selected.status} /> },
-                  { label: "사용부서", value: selected.department || "-" },
-                  { label: "사용자", value: displayUser(selected.user) },
-                  { label: "위치", value: selected.location },
-                  { label: "취득일자", value: selected.purchaseDate && selected.purchaseDate !== "-" ? displayDate(selected.purchaseDate) : "-" },
-                  { label: "취득금액", value: selected.purchaseCost && selected.purchaseCost !== "-" ? `${Number(selected.purchaseCost).toLocaleString()}원` : "-" },
-                  { label: "구입처", value: selected.vendor || "-" },
-                  { label: "보증 만료일", value: selected.warrantyExpiry && selected.warrantyExpiry !== "-" ? selected.warrantyExpiry.slice(0, 10) : "-" },
-                  { label: "등록일", value: displayDate(selected.date) },
-                  { label: "사용 기간", value: displayAge(selected.date) },
-                  { label: "비고", value: selected.note || "-" },
-                ].map(({ label, value }) => <Field key={label} label={label} value={value} />)}
+              <div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 20 }}>
+                  {[
+                    { label: "자산번호", value: selected.id },
+                    { label: "유형", value: selected.type || "기타" },
+                    { label: "자산명", value: selected.name },
+                    { label: "모델명", value: selected.model || "-" },
+                    { label: "시리얼 넘버", value: selected.serial || "-" },
+                    { label: "상태", value: <StatusBadge status={selected.status} /> },
+                    { label: "사용부서", value: selected.department || "-" },
+                    { label: "사용자", value: displayUser(selected.user) },
+                    { label: "위치", value: selected.location },
+                    { label: "취득일자", value: selected.purchaseDate && selected.purchaseDate !== "-" ? displayDate(selected.purchaseDate) : "-" },
+                    { label: "취득금액", value: selected.purchaseCost && selected.purchaseCost !== "-" ? `${Number(selected.purchaseCost).toLocaleString()}원` : "-" },
+                    { label: "구입처", value: selected.vendor || "-" },
+                    { label: "보증 만료일", value: selected.warrantyExpiry && selected.warrantyExpiry !== "-" ? selected.warrantyExpiry.slice(0, 10) : "-" },
+                    { label: "등록일", value: displayDate(selected.date) },
+                    { label: "사용 기간", value: displayAge(selected.date) },
+                    { label: "비고", value: selected.note || "-" },
+                  ].map(({ label, value }) => <Field key={label} label={label} value={value} />)}
+                </div>
+                <div style={{ background: C.bg, borderRadius: 10, padding: 16, marginBottom: 20 }}>
+                  <p style={{ margin: "0 0 12px", fontSize: 13, fontWeight: 600, color: "#475569" }}>자산 이력</p>
+                  {assetHistory.length > 0
+                    ? assetHistory.map(h => (
+                      <div key={h.id} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+                        <HistoryBadge type={h.type} />
+                        <span style={{ fontSize: 13, color: "#475569", flex: 1 }}>{displayUser(h.from)} → {displayUser(h.to)}</span>
+                        <span style={{ fontSize: 12, color: C.textLight }}>{h.note}</span>
+                        <span style={{ fontSize: 12, color: C.textLight }}>{displayDate(h.date)}</span>
+                      </div>
+                    ))
+                    : <p style={{ margin: 0, fontSize: 13, color: "#CBD5E1" }}>이력 없음</p>}
+                </div>
+                <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+                {/*<div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>*/}
+                <Btn variant="ghost" small onClick={() => {
+                  const printWin = window.open("", "_blank", "width=400,height=400");
+                  printWin.document.write(`
+                    <html><head><title>QR - ${selected.name}</title>
+                    <style>body{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;gap:12px;}
+                    p{margin:0;font-size:14px;font-weight:600;}</style></head>
+                    <body>
+                      <p>${selected.name}</p>
+                      <p style="font-size:12px;color:#64748B">${selected.id}</p>
+                      <div id="qr"></div>
+                      <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+                      <script>
+                        new QRCode(document.getElementById("qr"), {
+                          text: "${selected.id}",
+                          width: 200, height: 200
+                        });
+                        setTimeout(() => window.print(), 500);
+                      </script>
+                    </body></html>
+                  `);
+                  printWin.document.close();
+                }}>🔲 QR 출력</Btn>
+
+                {/* viewer/manager: 요청 버튼 */}
+                {permission !== "admin" && (
+                  <>
+                    <Btn variant="ghost" onClick={() => {
+                      if (!window.confirm(`'${selected.name}' 반납을 요청할까요?`)) return;
+                      const req = {
+                        type: "반납요청",
+                        assetId: selected.id,
+                        assetName: selected.name,
+                        requesterId: currentUser?.id || "-",
+                        requesterName: currentUser?.name || "-",
+                        targetUser: "-",
+                        status: "대기중",
+                        note: "반납 요청",
+                        date: toKST(),
+                        resolvedNote: "-",
+                        resolvedDate: "-",
+                      };
+                      supabase.from("requests").insert(req).then(({ error }) => {
+                        if (error) { alert("요청 실패: " + error.message); return; }
+                        setRequests([req, ...requests]);
+                        alert("반납 요청이 접수되었습니다.");
+                        setSelected(null);
+                      });
+                    }}>반납 요청</Btn>
+                  </>
+                )}
+                {/* admin/manager: 수정/삭제 버튼 */}
+                {permission !== "viewer" && (
+                  <>
+                    <Btn variant="danger" onClick={deleteAsset}>삭제</Btn>
+                    <Btn onClick={() => {
+                      setEditForm({
+                        ...selected,
+                        purchaseDate: selected.purchaseDate && selected.purchaseDate !== "-"
+                          ? selected.purchaseDate.slice(0, 10) : "",
+                      });
+                      setEditMode(true);
+                    }}>수정</Btn>
+                  </>
+                )}
               </div>
-              <div style={{ background: C.bg, borderRadius: 10, padding: 16, marginBottom: 20 }}>
-                <p style={{ margin: "0 0 12px", fontSize: 13, fontWeight: 600, color: "#475569" }}>자산 이력</p>
-                {assetHistory.length > 0
-                  ? assetHistory.map(h => (
-                    <div key={h.id} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
-                      <HistoryBadge type={h.type} />
-                      <span style={{ fontSize: 13, color: "#475569", flex: 1 }}>{displayUser(h.from)} → {displayUser(h.to)}</span>
-                      <span style={{ fontSize: 12, color: C.textLight }}>{h.note}</span>
-                      <span style={{ fontSize: 12, color: C.textLight }}>{displayDate(h.date)}</span>
-                    </div>
-                  ))
-                  : <p style={{ margin: 0, fontSize: 13, color: "#CBD5E1" }}>이력 없음</p>}
-              </div>
-              <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-              {/* viewer/manager: 요청 버튼 */}
-              {permission !== "admin" && (
-                <>
-                  <Btn variant="ghost" onClick={() => {
-                    if (!window.confirm(`'${selected.name}' 반납을 요청할까요?`)) return;
-                    const req = {
-                      type: "반납요청",
-                      assetId: selected.id,
-                      assetName: selected.name,
-                      requesterId: currentUser?.id || "-",
-                      requesterName: currentUser?.name || "-",
-                      targetUser: "-",
-                      status: "대기중",
-                      note: "반납 요청",
-                      date: toKST(),
-                      resolvedNote: "-",
-                      resolvedDate: "-",
-                    };
-                    supabase.from("requests").insert(req).then(({ error }) => {
-                      if (error) { alert("요청 실패: " + error.message); return; }
-                      setRequests([req, ...requests]);
-                      alert("반납 요청이 접수되었습니다.");
-                      setSelected(null);
-                    });
-                  }}>반납 요청</Btn>
-                </>
-              )}
-              {/* admin/manager: 수정/삭제 버튼 */}
-              {permission !== "viewer" && (
-                <>
-                  <Btn variant="danger" onClick={deleteAsset}>삭제</Btn>
-                  <Btn onClick={() => {
-                    setEditForm({
-                      ...selected,
-                      purchaseDate: selected.purchaseDate && selected.purchaseDate !== "-"
-                        ? selected.purchaseDate.slice(0, 10) : "",
-                    });
-                    setEditMode(true);
-                  }}>수정</Btn>
-                </>
-              )}
-            </div>
             </div>
           )}
         </Modal>
@@ -1534,15 +1653,6 @@ function MemberPage({ members, setMembers, assets, setAssets, history, permissio
                     : <p style={{ margin: 0, fontSize: 13, color: "#CBD5E1" }}>이력 없음</p>;
                 })()}
               </div>      
-              {permission !== "viewer" && (
-                <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-                  <Btn variant="danger" onClick={deleteMember}>삭제</Btn>
-                  <Btn onClick={() => {
-                    setEditForm({ ...selected });
-                    setEditMode(true);
-                  }}>수정</Btn>
-                </div>
-              )}
             </div>
           )}
         </Modal>
@@ -1671,6 +1781,9 @@ function RequestPage({ requests, setRequests, assets, setAssets, members, permis
   const [resolveOpen, setResolveOpen] = useState(false);
   const [selectedReq, setSelectedReq] = useState(null);
   const [resolveNote, setResolveNote] = useState("");
+  const [assignReqOpen, setAssignReqOpen] = useState(false);
+  const [assignNote, setAssignNote] = useState("");
+  const [assignTarget, setAssignTarget] = useState(null);
 
   // 부서장은 자기 부서 자산 요청만
   const visibleRequests = permission === "admin"
@@ -1698,12 +1811,18 @@ function RequestPage({ requests, setRequests, assets, setAssets, members, permis
     const { error } = await supabase.from("requests").update(updatedReq).eq("id", selectedReq.id);
     if (error) { alert("처리 실패: " + error.message); return; }
 
-    // 승인 시 자산 상태 변경
     if (approve && selectedReq.type === "반납요청") {
       const asset = assets.find(a => a.id === selectedReq.assetId);
       if (asset) {
         const updatedAsset = { ...asset, user: "-", status: "미사용" };
         const histories = [makeHistory("반납", updatedAsset, asset.user, "-", `요청 승인: ${resolveNote || "반납 처리"}`)];
+        setAssets(assets.map(a => a.id === asset.id ? updatedAsset : a), histories);
+      }
+    } else if (approve && selectedReq.type === "배정요청") {
+      const asset = assets.find(a => a.id === selectedReq.assetId);
+      if (asset) {
+        const updatedAsset = { ...asset, user: selectedReq.targetUser, status: "사용중" };
+        const histories = [makeHistory("배정", updatedAsset, "-", selectedReq.targetUser, `요청 승인: ${resolveNote || "배정 처리"}`)];
         setAssets(assets.map(a => a.id === asset.id ? updatedAsset : a), histories);
       }
     }
@@ -1717,6 +1836,11 @@ function RequestPage({ requests, setRequests, assets, setAssets, members, permis
   return (
     <main style={{ flex: 1, padding: "36px 40px", overflowY: "auto" }}>
       <PageHeader title="요청 관리" subtitle="자산 반납/배정 요청을 승인하거나 거절하세요" />
+      {permission !== "admin" && (
+        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 16 }}>
+          <Btn onClick={() => setAssignReqOpen(true)}>+ 배정 요청</Btn>
+        </div>
+      )}
       <SummaryCards items={[
         { label: "전체 요청", value: visibleRequests.length, color: C.primary },
         { label: "대기중", value: visibleRequests.filter(r => r.status === "대기중").length, color: "#F97316" },
@@ -1792,6 +1916,329 @@ function RequestPage({ requests, setRequests, assets, setAssets, members, permis
           </div>
         </Modal>
       )}
+
+      {/* 배정 요청 모달 */}
+      {assignReqOpen && (
+        <Modal title="배정 요청" onClose={() => { setAssignReqOpen(false); setAssignNote(""); setAssignTarget(null); }} wide>
+          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            <p style={{ margin: 0, fontSize: 13, color: C.textMuted }}>배정받을 자산을 선택하세요.</p>
+            <div style={{ maxHeight: 240, overflowY: "auto", border: `1px solid ${C.border}`, borderRadius: 8 }}>
+              {assets.filter(a => a.status === "미사용").length === 0
+                ? <p style={{ padding: 20, textAlign: "center", fontSize: 13, color: C.textLight, margin: 0 }}>배정 가능한 자산이 없습니다</p>
+                : assets.filter(a => a.status === "미사용").map(a => (
+                  <div key={a.id} onClick={() => setAssignTarget(a)}
+                    style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px",
+                      borderBottom: `1px solid ${C.bg}`, cursor: "pointer",
+                      background: assignTarget?.id === a.id ? "#EFF6FF" : "transparent" }}>
+                    <div style={{ flex: 1 }}>
+                      <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: C.text }}>{a.name}</p>
+                      <p style={{ margin: "2px 0 0", fontSize: 12, color: C.textMuted }}>{a.type || "기타"} · {a.department || "-"} · {a.location}</p>
+                    </div>
+                    {assignTarget?.id === a.id && <span style={{ fontSize: 12, color: C.primary, fontWeight: 600 }}>선택됨</span>}
+                  </div>
+                ))
+              }
+            </div>
+            <InputField label="요청 사유" value={assignNote} onChange={v => setAssignNote(v)} placeholder="배정이 필요한 이유를 입력하세요" />
+            {!assignTarget && <p style={{ margin: 0, fontSize: 12, color: C.danger }}>자산을 선택해 주세요.</p>}
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 8 }}>
+              <Btn variant="ghost" onClick={() => { setAssignReqOpen(false); setAssignNote(""); setAssignTarget(null); }}>취소</Btn>
+              <Btn onClick={() => {
+                if (!assignTarget) return;
+                const req = {
+                  type: "배정요청",
+                  assetId: assignTarget.id,
+                  assetName: assignTarget.name,
+                  requesterId: currentUser?.id || "-",
+                  requesterName: currentUser?.name || "-",
+                  targetUser: currentUser?.name || "-",
+                  status: "대기중",
+                  note: assignNote || "배정 요청",
+                  date: toKST(),
+                  resolvedNote: "-",
+                  resolvedDate: "-",
+                };
+                supabase.from("requests").insert(req).then(({ error }) => {
+                  if (error) { alert("요청 실패: " + error.message); return; }
+                  setRequests([req, ...requests]);
+                  alert("배정 요청이 접수되었습니다.");
+                  setAssignReqOpen(false);
+                  setAssignNote("");
+                  setAssignTarget(null);
+                });
+              }}>요청</Btn>
+            </div>
+          </div>
+        </Modal>
+      )}
+    </main>
+  );
+}
+
+// ── 정기 실사 ──
+function InspectionPage({ inspections, setInspections, inspectionItems, setInspectionItems, assets, setAssets, members, permission, userDept, currentUser }) {
+  const [createOpen, setCreateOpen] = useState(false);
+  const [selectedInspection, setSelectedInspection] = useState(null);
+  const [form, setForm] = useState({ title: "", startDate: "", endDate: "", note: "" });
+
+  // admin: 전체, manager/viewer: 자기 부서 관련 실사만
+  const myItems = permission !== "admin"
+    ? inspectionItems.filter(item => item.department === userDept)
+    : inspectionItems;
+
+  const createInspection = async () => {
+    if (!form.title || !form.startDate) return;
+    const newInspection = {
+      title: form.title,
+      status: "진행중",
+      startDate: form.startDate,
+      endDate: form.endDate || "-",
+      createdBy: currentUser?.name || "관리자",
+      note: form.note || "-",
+    };
+    const { data, error } = await supabase.from("inspections").insert(newInspection).select().single();
+    if (error) { alert("실사 생성 실패: " + error.message); return; }
+
+    // 전체 자산을 실사 항목으로 생성
+    const items = assets.map(a => ({
+      inspectionId: data.id,
+      assetId: a.id,
+      assetName: a.name,
+      department: a.department || "-",
+      assignedUser: a.user || "-",
+      confirmedBy: "-",
+      status: "미확인",
+      note: "-",
+      confirmedDate: "-",
+    }));
+    const { error: itemError } = await supabase.from("inspection_items").insert(items);
+    if (itemError) { alert("실사 항목 생성 실패: " + itemError.message); return; }
+
+    setInspections([data, ...inspections]);
+    setInspectionItems([...inspectionItems, ...items]);
+    setCreateOpen(false);
+    setForm({ title: "", startDate: "", endDate: "", note: "" });
+    alert(`실사가 생성되었습니다. 총 ${items.length}개 자산이 등록되었습니다.`);
+  };
+
+  const confirmItem = async (item, status, note = "") => {
+    const updated = {
+      ...item,
+      status,
+      confirmedBy: currentUser?.name || "-",
+      confirmedDate: toKST(),
+      note: note || item.note,
+    };
+    const { error } = await supabase.from("inspection_items").update(updated).eq("id", item.id);
+    if (error) { alert("확인 실패: " + error.message); return; }
+    setInspectionItems(inspectionItems.map(i => i.id === item.id ? updated : i));
+  };
+
+  const closeInspection = async (inspection) => {
+    if (!window.confirm("실사를 완료 처리할까요?\n'없음'으로 확인된 자산은 '미사용', '분실'로 확인된 자산은 '분실'로 자동 변경됩니다.")) return;
+
+    const updated = { ...inspection, status: "완료" };
+    const { error } = await supabase.from("inspections").update(updated).eq("id", inspection.id);
+    if (error) { alert("완료 처리 실패: " + error.message); return; }
+
+    // 없음 → 미사용, 분실 → 분실 자동 반영
+    const items = inspectionItems.filter(i => i.inspectionId === inspection.id);
+    const histories = [];
+    const updatedAssets = assets.map(a => {
+      const item = items.find(i => i.assetId === a.id);
+      if (!item) return a;
+      if (item.status === "없음" && a.status !== "미사용") {
+        histories.push(makeHistory("상태변경", a, a.user, a.user, "실사 결과: 없음 → 미사용 처리"));
+        return { ...a, status: "미사용", user: "-" };
+      }
+      if (item.status === "분실" && a.status !== "분실") {
+        histories.push(makeHistory("상태변경", a, a.user, a.user, "실사 결과: 분실 처리"));
+        return { ...a, status: "분실", user: "-" };
+      }
+      return a;
+    });
+
+    if (histories.length > 0) {
+      setAssets(updatedAssets, histories);
+    }
+
+    setInspections(inspections.map(i => i.id === inspection.id ? updated : i));
+    setSelectedInspection(updated);
+    alert(`실사가 완료되었습니다.${histories.length > 0 ? `\n${histories.length}개 자산의 상태가 변경되었습니다.` : ""}`);
+  };
+
+  const [inspectionFilter, setInspectionFilter] = useState("전체");
+  const selectedItems = selectedInspection
+    ? inspectionItems.filter(i => i.inspectionId === selectedInspection.id &&
+        (permission === "admin" || i.department === userDept))
+    : [];
+  const filteredItems = inspectionFilter === "전체"
+  ? selectedItems
+  : selectedItems.filter(i => i.status === inspectionFilter);
+  const confirmedCount = selectedItems.filter(i => i.status !== "미확인").length;
+  const progressPct = selectedItems.length > 0 ? Math.round(confirmedCount / selectedItems.length * 100) : 0;
+
+  return (
+    <main style={{ flex: 1, padding: "36px 40px", overflowY: "auto" }}>
+      <PageHeader title="정기 실사" subtitle="자산 보유 현황을 주기적으로 확인하세요"
+        action={permission === "admin" && !selectedInspection
+          ? <Btn onClick={() => setCreateOpen(true)}>+ 실사 생성</Btn>
+          : selectedInspection ? <Btn variant="ghost" onClick={() => setSelectedInspection(null)}>← 목록으로</Btn>
+          : null}
+      />
+
+      {/* 실사 목록 */}
+      {!selectedInspection ? (
+        <>
+          <SummaryCards items={[
+            { label: "전체 실사", value: inspections.length, color: C.primary },
+            { label: "진행중", value: inspections.filter(i => i.status === "진행중").length, color: "#F97316" },
+            { label: "완료", value: inspections.filter(i => i.status === "완료").length, color: "#10B981" },
+          ]} />
+          <div style={{ background: C.card, borderRadius: 12, boxShadow: "0 1px 4px rgba(0,0,0,0.06)", overflow: "hidden" }}>
+            {inspections.length === 0
+              ? <p style={{ padding: 40, textAlign: "center", fontSize: 14, color: "#CBD5E1", margin: 0 }}>실사 내역이 없습니다</p>
+              : inspections.map((ins, i) => {
+                const items = inspectionItems.filter(item => item.inspectionId === ins.id);
+                const confirmed = items.filter(item => item.status !== "미확인").length;
+                const pct = items.length > 0 ? Math.round(confirmed / items.length * 100) : 0;
+                return (
+                  <div key={ins.id} onClick={() => setSelectedInspection(ins)}
+                    style={{ display: "flex", alignItems: "center", gap: 16, padding: "16px 20px",
+                      borderBottom: i < inspections.length - 1 ? `1px solid ${C.bg}` : "none",
+                      cursor: "pointer" }}
+                    onMouseEnter={e => e.currentTarget.style.background = "#F8FAFC"}
+                    onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                    <div style={{ flex: 1 }}>
+                      <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: C.text }}>{ins.title}</p>
+                      <p style={{ margin: "2px 0 0", fontSize: 12, color: C.textMuted }}>
+                        {ins.startDate} ~ {ins.endDate !== "-" ? ins.endDate : "진행중"} · 생성: {ins.createdBy}
+                      </p>
+                    </div>
+                    <div style={{ textAlign: "right" }}>
+                      <span style={{ fontSize: 12, color: C.textMuted }}>{confirmed}/{items.length} ({pct}%)</span>
+                      <div style={{ width: 80, height: 4, background: C.bg, borderRadius: 99, marginTop: 4 }}>
+                        <div style={{ width: `${pct}%`, height: "100%", background: pct === 100 ? "#10B981" : C.primary, borderRadius: 99 }} />
+                      </div>
+                    </div>
+                    <span style={{ fontSize: 12, fontWeight: 600, padding: "3px 10px", borderRadius: 99,
+                      background: ins.status === "완료" ? "#D1FAE5" : "#FFF7ED",
+                      color: ins.status === "완료" ? "#065F46" : "#C2410C" }}>
+                      {ins.status}
+                    </span>
+                  </div>
+                );
+              })
+            }
+          </div>
+        </>
+      ) : (
+        /* 실사 상세 */
+        <>
+          <div style={{ background: C.card, borderRadius: 12, padding: 20, marginBottom: 20, boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div>
+                <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: C.text }}>{selectedInspection.title}</h2>
+                <p style={{ margin: "4px 0 0", fontSize: 13, color: C.textMuted }}>
+                  {selectedInspection.startDate} ~ {selectedInspection.endDate !== "-" ? selectedInspection.endDate : "진행중"}
+                </p>
+              </div>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <span style={{ fontSize: 13, color: C.textMuted }}>{confirmedCount}/{selectedItems.length} 확인 ({progressPct}%)</span>
+                {permission === "admin" && selectedInspection.status === "진행중" && (
+                  <Btn small variant="ghost" onClick={() => closeInspection(selectedInspection)}>실사 완료</Btn>
+                )}
+              </div>
+            </div>
+            {/* 진행률 바 */}
+            <div style={{ width: "100%", height: 6, background: C.bg, borderRadius: 99, marginTop: 12 }}>
+              <div style={{ width: `${progressPct}%`, height: "100%", background: progressPct === 100 ? "#10B981" : C.primary, borderRadius: 99, transition: "width 0.3s" }} />
+            </div>
+          </div>
+
+          {/* 필터 */}
+          <div style={{ display: "flex", gap: 10, marginBottom: 16 }}>
+            {["전체", "미확인", "보유중", "없음", "분실"].map(s => (
+              <button key={s} onClick={() => setInspectionFilter(s)}
+                style={{ padding: "8px 16px", borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: "pointer",
+                  border: `1px solid ${C.border}`,
+                  background: inspectionFilter === s ? C.primary : C.card,
+                  color: inspectionFilter === s ? "#fff" : C.textMuted, transition: "all 0.15s" }}>
+                {s}
+              </button>
+            ))}
+          </div>
+
+          {/* 실사 항목 목록 */}
+          <div style={{ background: C.card, borderRadius: 12, boxShadow: "0 1px 4px rgba(0,0,0,0.06)", overflow: "hidden" }}>
+            {filteredItems.length === 0
+              ? <p style={{ padding: 40, textAlign: "center", fontSize: 14, color: "#CBD5E1", margin: 0 }}>항목이 없습니다</p>
+              : filteredItems.map((item, i) => (
+                <div key={item.id} style={{ display: "flex", alignItems: "center", gap: 16, padding: "14px 20px",
+                  borderBottom: i < selectedItems.length - 1 ? `1px solid ${C.bg}` : "none" }}>
+                  <div style={{ flex: 1 }}>
+                    <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: C.text }}>{item.assetName}</p>
+                    <p style={{ margin: "2px 0 0", fontSize: 12, color: C.textMuted }}>
+                      {item.department} · {displayUser(item.assignedUser)}
+                      {item.confirmedBy !== "-" && ` · 확인: ${item.confirmedBy} (${item.confirmedDate?.slice(0, 10)})`}
+                    </p>
+                  </div>
+                  <span style={{ fontSize: 12, fontWeight: 600, padding: "3px 10px", borderRadius: 99,
+                    background: item.status === "보유중" ? "#D1FAE5" : item.status === "없음" ? "#FEE2E2" : item.status === "분실" ? "#FFF7ED" : "#F1F5F9",
+                    color: item.status === "보유중" ? "#065F46" : item.status === "없음" ? "#991B1B" : item.status === "분실" ? "#C2410C" : "#64748B" }}>
+                    {item.status}
+                  </span>
+                  {selectedInspection.status === "진행중" && (
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <Btn small onClick={() => confirmItem(item, "보유중")}>보유중</Btn>
+                      <Btn small variant="ghost" onClick={() => confirmItem(item, "없음")}>없음</Btn>
+                      <Btn small variant="danger" onClick={() => confirmItem(item, "분실")}>분실</Btn>
+                    </div>
+                  )}
+                </div>
+              ))
+            }
+          </div>
+
+          {/* 결과 요약 */}
+          {selectedItems.length > 0 && (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginTop: 16 }}>
+              {[
+                { label: "전체", value: selectedItems.length, color: C.primary },
+                { label: "보유중", value: selectedItems.filter(i => i.status === "보유중").length, color: "#10B981" },
+                { label: "없음", value: selectedItems.filter(i => i.status === "없음").length, color: C.danger },
+                { label: "분실", value: selectedItems.filter(i => i.status === "분실").length, color: "#F97316" },
+              ].map(({ label, value, color }) => (
+                <div key={label} style={{ background: C.card, borderRadius: 12, padding: "16px 20px", boxShadow: "0 1px 4px rgba(0,0,0,0.06)", textAlign: "center" }}>
+                  <p style={{ margin: 0, fontSize: 12, color: C.textLight }}>{label}</p>
+                  <p style={{ margin: "6px 0 0", fontSize: 24, fontWeight: 700, color }}>{value}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+
+      {/* 실사 생성 모달 */}
+      {createOpen && (
+        <Modal title="실사 생성" onClose={() => setCreateOpen(false)}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            <InputField label="실사명 *" value={form.title} onChange={v => setForm({ ...form, title: v })} placeholder="예: 2025년 1분기 정기 실사" />
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <InputField label="시작일 *" value={form.startDate} type="date" onChange={v => setForm({ ...form, startDate: v })} />
+              <InputField label="종료일" value={form.endDate} type="date" onChange={v => setForm({ ...form, endDate: v })} />
+            </div>
+            <InputField label="비고" value={form.note} onChange={v => setForm({ ...form, note: v })} placeholder="실사 관련 메모" />
+            <div style={{ background: "#EFF6FF", borderRadius: 8, padding: "10px 14px", fontSize: 13, color: "#1D4ED8" }}>
+              ℹ️ 실사 생성 시 현재 등록된 전체 자산 {assets.length}개가 실사 항목으로 자동 등록됩니다.
+            </div>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 8 }}>
+              <Btn variant="ghost" onClick={() => setCreateOpen(false)}>취소</Btn>
+              <Btn onClick={createInspection}>생성</Btn>
+            </div>
+          </div>
+        </Modal>
+      )}
     </main>
   );
 }
@@ -1806,19 +2253,29 @@ export default function App() {
   const [members, setMembersState] = useState([]);
   const [history, setHistoryState] = useState([]);
   const [requests, setRequestsState] = useState([]);
+  const [inspections, setInspectionsState] = useState([]);
+  const [inspectionItems, setInspectionItemsState] = useState([]);
   const [page, setPage] = useState("dashboard");
   const [loading, setLoading] = useState(true);
 
   const fetchAll = async () => {
     setLoading(true);
     try {
-      const [{ data: a, error: e1 }, { data: m, error: e2 }, { data: h, error: e3 }, { data: r, error: e4 }] = await Promise.all([
-      supabase.from("assets").select("*"),
-      supabase.from("members").select("*"),
-      supabase.from("history").select("*").order("date", { ascending: false }),
-      supabase.from("requests").select("*").order("date", { ascending: false }),
-    ]);
-    if (e1 || e2 || e3 || e4) {
+      const [{ data: a, error: e1 }, { data: m, error: e2 }, { data: h, error: e3 }, { data: r, error: e4 }, { data: ins, error: e5 }, { data: insItems, error: e6 }] = await Promise.all([
+        supabase.from("assets").select("*"),
+        supabase.from("members").select("*"),
+        supabase.from("history").select("*").order("date", { ascending: false }),
+        supabase.from("requests").select("*").order("date", { ascending: false }),
+        supabase.from("inspections").select("*").order("startDate", { ascending: false }),
+        supabase.from("inspection_items").select("*"),
+      ]);
+      if (e1 || e2 || e3 || e4 || e5 || e6) {
+          console.error("e1(assets):", e1);
+          console.error("e2(members):", e2);
+          console.error("e3(history):", e3);
+          console.error("e4(requests):", e4);
+          console.error("e5(inspections):", e5);
+          console.error("e6(inspection_items):", e6);
         alert("데이터를 불러오는 중 오류가 발생했습니다. 새로고침을 시도해 주세요.");
         setLoading(false);
         return;
@@ -1827,6 +2284,8 @@ export default function App() {
       setMembersState(m || []);
       setHistoryState(h || []);
       setRequestsState(r || []);
+      setInspectionsState(ins || []);
+      setInspectionItemsState(insItems || []);
     } catch (e) {
       alert("네트워크 오류가 발생했습니다. 인터넷 연결을 확인해 주세요.");
     } finally {
@@ -1939,6 +2398,7 @@ export default function App() {
     { key: "members",   icon: "members",   label: "구성원 관리" },
     { key: "history",   icon: "history",   label: "이력 관리" },
     { key: "requests",  icon: "requests",  label: "요청 관리" },
+    { key: "inspections", icon: "inspections", label: "정기 실사" },
   ];
 
   if (loading) return (
@@ -2046,14 +2506,15 @@ export default function App() {
           >
             Sign Out
           </button>
-          <p style={{ margin: 0, fontSize: 11, color: "rgba(255,255,255,0.2)" }}>DURAE Assets v1.0.0</p>
+          <p style={{ margin: 0, fontSize: 11, color: "rgba(255,255,255,0.2)" }}>DURAE Assets v2.0.0</p>
         </div>
       </aside>
-      {page === "dashboard" && <Dashboard assets={assets} members={members} history={history} permission={permission} userDept={userDept} />}
+      {page === "dashboard" && <Dashboard assets={assets} members={members} history={history} permission={permission} userDept={userDept} onNavigate={setPage} />}
       {page === "assets" && <AssetPage assets={assets} setAssets={updateAssets} history={history} members={members} permission={permission} userDept={userDept} requests={requests} setRequests={setRequestsState} currentUser={currentUser} />}
       {page === "members"   && <MemberPage members={members} setMembers={updateMembers} assets={assets} setAssets={updateAssets} history={history} permission={permission} userDept={userDept} />}
       {page === "history" && <HistoryPage history={history} permission={permission} userDept={userDept} assets={assets} />}
       {page === "requests"  && <RequestPage requests={requests} setRequests={setRequestsState} assets={assets} setAssets={updateAssets} members={members} permission={permission} userDept={userDept} currentUser={currentUser} />}
+      {page === "inspections" && <InspectionPage inspections={inspections} setInspections={setInspectionsState} inspectionItems={inspectionItems} setInspectionItems={setInspectionItemsState} assets={assets} setAssets={updateAssets} members={members} permission={permission} userDept={userDept} currentUser={currentUser} />}
     </div>
   );
 }
