@@ -56,6 +56,17 @@ export default function AssetPage({ assets, setAssets, history, members, permiss
   const [importError, setImportError] = useState("");     // 오류 메시지
   const fileInputRef = useRef(null);
   
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const thirtyDaysLater = new Date(today.getTime() + 30 * 24 * 60 * 60 * 1000);
+
+  const getWarrantyStatus = (warrantyExpiry) => {
+    if (!warrantyExpiry || warrantyExpiry === "-") return null;
+    const expiry = new Date(warrantyExpiry.slice(0, 10));
+    if (expiry < today) return "expired";
+    if (expiry <= thirtyDaysLater) return "warning";
+    return null;
+  };
 
   useEffect(() => { setCurrentPage(1); }, [search, filterStatus, filterDept, filterType]);
   useEffect(() => {
@@ -284,6 +295,7 @@ export default function AssetPage({ assets, setAssets, history, members, permiss
     { label: "위치", key: "location" },
     { label: "사용부서", key: "department" },
     { label: "사용자", key: "user" },
+    { label: "보증만료일", key: "warrantyExpiry" },
     { label: "취득일자", key: "purchaseDate" },
     { label: "취득금액", key: "purchaseCost" },
     { label: "구입처", key: "vendor" },
@@ -331,6 +343,8 @@ export default function AssetPage({ assets, setAssets, history, members, permiss
         { label: "미사용", value: visibleAssets.filter(a => a.status === "미사용").length, color: C.textMuted },
         { label: "수리중", value: visibleAssets.filter(a => a.status === "수리중").length, color: C.danger },
         { label: "분실", value: visibleAssets.filter(a => a.status === "분실").length, color: "#F97316" },
+        { label: "보증 만료", value: visibleAssets.filter(a => getWarrantyStatus(a.warrantyExpiry) === "expired").length, color: "#DC2626" },
+        { label: "만료 임박", value: visibleAssets.filter(a => getWarrantyStatus(a.warrantyExpiry) === "warning").length, color: "#F97316" },
         { label: "전체 구성원", value: members.length, color: C.purple },
       ]} />
 
@@ -394,6 +408,26 @@ export default function AssetPage({ assets, setAssets, history, members, permiss
             onClick={() => { setSelected(a); setEditMode(false); }}>{a.department || "-"}</td>
           <td style={{ padding: "14px 20px", fontSize: 14, color: a.user === "-" ? C.textLight : C.text, whiteSpace: "nowrap" }}
             onClick={() => { setSelected(a); setEditMode(false); }}>{displayUser(a.user)}</td>
+          <td style={{ padding: "14px 20px", whiteSpace: "nowrap" }}
+            onClick={() => { setSelected(a); setEditMode(false); }}>
+            {(() => {
+              const ws = getWarrantyStatus(a.warrantyExpiry);
+              if (!a.warrantyExpiry || a.warrantyExpiry === "-") return <span style={{ color: C.textLight }}>-</span>;
+              return (
+                <span style={{
+                  fontSize: 12, fontWeight: ws ? 600 : 400,
+                  color: ws === "expired" ? "#DC2626" : ws === "warning" ? "#F97316" : C.textMuted,
+                  background: ws === "expired" ? "#FEE2E2" : ws === "warning" ? "#FFEDD5" : "transparent",
+                  padding: ws ? "2px 8px" : 0,
+                  borderRadius: ws ? 6 : 0,
+                }}>
+                  {ws === "expired" && "만료 "}
+                  {ws === "warning" && "임박 "}
+                  {a.warrantyExpiry.slice(0, 10)}
+                </span>
+              );
+            })()}
+          </td>
           <td style={{ padding: "14px 20px", fontSize: 14, color: C.text, whiteSpace: "nowrap" }}
             onClick={() => { setSelected(a); setEditMode(false); }}>{a.purchaseDate && a.purchaseDate !== "-" ? displayDate(a.purchaseDate) : "-"}</td>
           <td style={{ padding: "14px 20px", fontSize: 14, color: C.text, whiteSpace: "nowrap" }}
@@ -764,20 +798,28 @@ export default function AssetPage({ assets, setAssets, history, members, permiss
                 <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
                 {/*<div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>*/}
                 <Btn variant="ghost" small onClick={() => {
-                  const printWin = window.open("", "_blank", "width=400,height=400");
+                  const printWin = window.open("", "_blank", "width=420,height=500");
                   printWin.document.write(`
                     <html><head><title>QR - ${selected.name}</title>
-                    <style>body{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;gap:12px;}
-                    p{margin:0;font-size:14px;font-weight:600;}</style></head>
+                    <style>
+                      body{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;gap:0;margin:0;}
+                      .box{border:1px solid #E2E8F0;border-radius:12px;padding:24px 28px;display:flex;flex-direction:column;align-items:center;gap:8px;}
+                      .name{margin:0;font-size:15px;font-weight:700;color:#0F172A;}
+                      .info{margin:0;font-size:11px;color:#64748B;}
+                    </style></head>
                     <body>
-                      <p>${selected.name}</p>
-                      <p style="font-size:12px;color:#64748B">${selected.id}</p>
-                      <div id="qr"></div>
+                      <div class="box">
+                        <div id="qr"></div>
+                        <p class="name">${selected.name}</p>
+                        <p class="info">자산번호: ${selected.id.slice(0, 8)}</p>
+                        <p class="info">유형: ${selected.type || "기타"} · ${selected.department || "-"}</p>
+                        <p class="info">위치: ${selected.location || "-"}</p>
+                      </div>
                       <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
                       <script>
                         new QRCode(document.getElementById("qr"), {
                           text: "${selected.id}",
-                          width: 200, height: 200
+                          width: 180, height: 180
                         });
                         setTimeout(() => window.print(), 500);
                       </script>
