@@ -69,15 +69,17 @@ function buildAssetSheet(assets) {
   setCell(ws, "B4", "사용중", summaryLabelStyle);
   setCell(ws, "C4", "미사용", summaryLabelStyle);
   setCell(ws, "D4", "수리중", summaryLabelStyle);
+  setCell(ws, "E4", "분실", summaryLabelStyle);
   setCell(ws, "A5", assets.length, summaryValueStyle("1E40AF"));
   setCell(ws, "B5", assets.filter(a => a.status === "사용중").length, summaryValueStyle("065F46"));
   setCell(ws, "C5", assets.filter(a => a.status === "미사용").length, summaryValueStyle("475569"));
   setCell(ws, "D5", assets.filter(a => a.status === "수리중").length, summaryValueStyle("991B1B"));
+  setCell(ws, "E5", assets.filter(a => a.status === "분실").length, summaryValueStyle("C2410C"));
 
   // 헤더
-  const headers = ["자산번호", "자산명", "상태", "사용자", "위치", "등록일"];
-  const cols = ["A", "B", "C", "D", "E", "F"];
-  const headerColors = ["1E3A8A", "1E3A8A", "1E3A8A", "1E3A8A", "1E3A8A", "1E3A8A"];
+  const headers = ["자산번호", "자산명", "유형", "상태", "모델명", "시리얼넘버", "사용자", "사용부서", "위치", "취득일자", "취득금액", "구입처", "보증만료일", "등록일"];
+  const cols = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N"];
+  const headerColors = cols.map(() => "1E3A8A");
   headers.forEach((h, i) => setCell(ws, `${cols[i]}7`, h, headerStyle(headerColors[i])));
 
   // 데이터
@@ -88,19 +90,27 @@ function buildAssetSheet(assets) {
     const sColor = statusTextColor[a.status] || "000000";
     setCell(ws, `A${row}`, a.id, cellStyle(bg));
     setCell(ws, `B${row}`, a.name, cellStyle(bg));
-    ws[`C${row}`] = { v: a.status, t: "s", s: { ...cellStyle(sBg), font: { bold: true, color: { rgb: sColor } }, alignment: { horizontal: "center", vertical: "center" } } };
-    setCell(ws, `D${row}`, a.user, cellStyle(bg));
-    setCell(ws, `E${row}`, a.location, cellStyle(bg));
-    setCell(ws, `F${row}`, a.date, cellStyle(bg));
+    setCell(ws, `C${row}`, a.type || "기타", cellStyle(bg));
+    ws[`D${row}`] = { v: a.status, t: "s", s: { ...cellStyle(sBg), font: { bold: true, color: { rgb: sColor } }, alignment: { horizontal: "center", vertical: "center" } } };
+    setCell(ws, `E${row}`, a.model || "-", cellStyle(bg));
+    setCell(ws, `F${row}`, a.serial || "-", cellStyle(bg));
+    setCell(ws, `G${row}`, a.user === "-" ? "미배정" : a.user, cellStyle(bg));
+    setCell(ws, `H${row}`, a.department || "-", cellStyle(bg));
+    setCell(ws, `I${row}`, a.location, cellStyle(bg));
+    setCell(ws, `J${row}`, a.purchaseDate && a.purchaseDate !== "-" ? a.purchaseDate.slice(0, 10) : "-", cellStyle(bg));
+    setCell(ws, `K${row}`, a.purchaseCost && a.purchaseCost !== "-" ? Number(a.purchaseCost) : 0, { ...cellStyle(bg), alignment: { horizontal: "right" } });
+    setCell(ws, `L${row}`, a.vendor || "-", cellStyle(bg));
+    setCell(ws, `M${row}`, a.warrantyExpiry && a.warrantyExpiry !== "-" ? a.warrantyExpiry.slice(0, 10) : "-", cellStyle(bg));
+    setCell(ws, `N${row}`, a.date ? a.date.slice(0, 10) : "-", cellStyle(bg));
   });
 
-  ws["!ref"] = `A1:F${assets.length + 8}`;
+  ws["!ref"] = `A1:N${assets.length + 8}`;
   ws["!merges"] = [
-    { s: { r: 0, c: 0 }, e: { r: 0, c: 5 } },
-    { s: { r: 1, c: 0 }, e: { r: 1, c: 5 } },
+  { s: { r: 0, c: 0 }, e: { r: 0, c: 13 } },
+  { s: { r: 1, c: 0 }, e: { r: 1, c: 13 } },
   ];
   ws["!rows"] = [{ hpt: 28 }, { hpt: 18 }, {}, { hpt: 22 }, { hpt: 32 }];
-  applyColWidths(ws, [12, 24, 10, 12, 12, 14]);
+  applyColWidths(ws, [12, 24, 10, 10, 18, 16, 12, 12, 12, 12, 12, 14, 12, 14]);
   return ws;
 }
 
