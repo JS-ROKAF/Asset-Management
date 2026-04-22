@@ -26,7 +26,7 @@ import {
   DEPARTMENTS,
   C
   } from "../constants";
-
+import { displayUser } from "../utils/user";
 import { displayDate } from "../utils/date";
 
 // ── 대시보드 ──
