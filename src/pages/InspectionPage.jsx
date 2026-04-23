@@ -230,7 +230,7 @@ export default function InspectionPage({ inspections, setInspections, inspection
             {filteredItems.length === 0
               ? <p style={{ padding: 40, textAlign: "center", fontSize: 14, color: "#CBD5E1", margin: 0 }}>항목이 없습니다</p>
               : filteredItems.map((item, i) => (
-                <div key={item.id} style={{ display: "flex", alignItems: "center", gap: 16, padding: "14px 20px",
+                <div key={item.id} style={{ display: "flex", alignItems: "center", gap: 16, padding: "10px 12px",
                   borderBottom: i < selectedItems.length - 1 ? `1px solid ${C.bg}` : "none" }}>
                   <div style={{ flex: 1 }}>
                     <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: C.text }}>{item.assetName}</p>

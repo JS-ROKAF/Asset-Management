@@ -126,15 +126,15 @@ export default function HistoryPage({ history, setHistory, permission, userDept,
             <tr key={h.id} style={{ borderBottom: i < filtered.length - 1 ? `1px solid ${C.bg}` : "none" }}
               onMouseEnter={e => e.currentTarget.style.background = "#F8FAFC"}
               onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
-              <td style={{ padding: "14px 20px" }}><HistoryBadge type={h.type} /></td>
-              <td style={{ padding: "14px 20px", fontSize: 13, color: C.textMuted, whiteSpace: "nowrap" }}>{h.assetId}</td>
-              <td style={{ padding: "14px 20px", fontSize: 14, color: C.text, fontWeight: 500 }}>{h.assetName}</td>
-              <td style={{ padding: "14px 20px", fontSize: 14, color: C.textMuted }}>{displayUser(h.from)}</td>
-              <td style={{ padding: "14px 20px", fontSize: 14, color: C.text, fontWeight: 500 }}>{displayUser(h.to)}</td>
-              <td style={{ padding: "14px 20px", fontSize: 13, color: C.textLight }}>{h.note || "-"}</td>
-              <td style={{ padding: "14px 20px", fontSize: 13, color: C.textLight }}>{displayDate(h.date)}</td>
+              <td style={{ padding: "10px 12px" }}><HistoryBadge type={h.type} /></td>
+              <td style={{ padding: "10px 12px", fontSize: 13, color: C.textMuted, whiteSpace: "nowrap" }}>{h.assetId}</td>
+              <td style={{ padding: "10px 12px", fontSize: 14, color: C.text, fontWeight: 500 }}>{h.assetName}</td>
+              <td style={{ padding: "10px 12px", fontSize: 14, color: C.textMuted }}>{displayUser(h.from)}</td>
+              <td style={{ padding: "10px 12px", fontSize: 14, color: C.text, fontWeight: 500 }}>{displayUser(h.to)}</td>
+              <td style={{ padding: "10px 12px", fontSize: 13, color: C.textLight }}>{h.note || "-"}</td>
+              <td style={{ padding: "10px 12px", fontSize: 13, color: C.textLight }}>{displayDate(h.date)}</td>
               {permission === "admin" && (
-                <td style={{ padding: "14px 20px" }}>
+                <td style={{ padding: "10px 12px" }}>
                   <button onClick={async () => {
                     if (!window.confirm("이 이력을 삭제할까요?")) return;
                     const { error } = await supabase.from("history").delete().eq("id", h.id);

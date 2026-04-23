@@ -54,7 +54,9 @@ export default function AssetPage({ assets, setAssets, history, members, permiss
   const [importOpen, setImportOpen] = useState(false);   // 가져오기 모달
   const [importData, setImportData] = useState([]);       // 파싱된 데이터
   const [importError, setImportError] = useState("");     // 오류 메시지
+  const [importGuideOpen, setImportGuideOpen] = useState(false);
   const fileInputRef = useRef(null);
+  
   
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -137,6 +139,7 @@ export default function AssetPage({ assets, setAssets, history, members, permiss
         }));
 
         setImportData(parsed);
+        setImportGuideOpen(false);
         setImportOpen(true);
       } catch (err) {
         setImportError("파일을 읽는 중 오류가 발생했습니다.");
@@ -288,7 +291,7 @@ export default function AssetPage({ assets, setAssets, history, members, permiss
     : [];
 
   const ASSET_HEADERS = [
-    { label: "자산번호", key: "id" },
+    { label: "자산번호", key: "id", width: 100 },
     { label: "자산명", key: "name" },
     { label: "유형", key: "type" },
     { label: "상태", key: "status" },
@@ -331,7 +334,7 @@ export default function AssetPage({ assets, setAssets, history, members, permiss
                 onChange={handleImportFile}
                 style={{ display: "none" }}
               />
-              <Btn variant="ghost" onClick={() => fileInputRef.current.click()}>⬆ 엑셀 가져오기</Btn>
+              <Btn variant="ghost" onClick={() => setImportGuideOpen(true)}>⬆ 엑셀 가져오기</Btn>
               <Btn onClick={() => setAddOpen(true)}>+ 자산 등록</Btn>
             </div>
           ) : null
@@ -394,21 +397,25 @@ export default function AssetPage({ assets, setAssets, history, members, permiss
             />
           </td>
           {/* 기존 td들 — onClick을 tr에서 각 td로 이동 */}
-          <td style={{ padding: "14px 20px", fontSize: 13, color: C.textMuted, whiteSpace: "nowrap" }}
+          <td style={{ width: 100,
+            maxWidth: 100,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap", padding: "10px 12px", fontSize: 13, color: C.textMuted, whiteSpace: "nowrap" }}
             onClick={() => { setSelected(a); setEditMode(false); }}>{a.id}</td>
-          <td style={{ padding: "14px 20px", fontSize: 14, color: C.text, fontWeight: 500, whiteSpace: "nowrap" }}
+          <td style={{ padding: "10px 12px", fontSize: 14, color: C.text, fontWeight: 500, whiteSpace: "nowrap" }}
             onClick={() => { setSelected(a); setEditMode(false); }}>{a.name}</td>
-          <td style={{ padding: "14px 20px", fontSize: 14, color: C.textMuted, whiteSpace: "nowrap" }}
+          <td style={{ padding: "10px 12px", fontSize: 14, color: C.textMuted, whiteSpace: "nowrap" }}
             onClick={() => { setSelected(a); setEditMode(false); }}>{a.type || "기타"}</td>
-          <td style={{ padding: "14px 20px", whiteSpace: "nowrap" }}
+          <td style={{ padding: "10px 12px", whiteSpace: "nowrap" }}
             onClick={() => { setSelected(a); setEditMode(false); }}><StatusBadge status={a.status} /></td>
-          <td style={{ padding: "14px 20px", fontSize: 14, color: C.text, whiteSpace: "nowrap" }}
+          <td style={{ padding: "10px 12px", fontSize: 14, color: C.text, whiteSpace: "nowrap" }}
             onClick={() => { setSelected(a); setEditMode(false); }}>{a.location}</td>
-          <td style={{ padding: "14px 20px", fontSize: 14, color: C.text, whiteSpace: "nowrap" }}
+          <td style={{ padding: "10px 12px", fontSize: 14, color: C.text, whiteSpace: "nowrap" }}
             onClick={() => { setSelected(a); setEditMode(false); }}>{a.department || "-"}</td>
-          <td style={{ padding: "14px 20px", fontSize: 14, color: a.user === "-" ? C.textLight : C.text, whiteSpace: "nowrap" }}
+          <td style={{ padding: "10px 12px", fontSize: 14, color: a.user === "-" ? C.textLight : C.text, whiteSpace: "nowrap" }}
             onClick={() => { setSelected(a); setEditMode(false); }}>{displayUser(a.user)}</td>
-          <td style={{ padding: "14px 20px", whiteSpace: "nowrap" }}
+          <td style={{ padding: "10px 12px", whiteSpace: "nowrap" }}
             onClick={() => { setSelected(a); setEditMode(false); }}>
             {(() => {
               const ws = getWarrantyStatus(a.warrantyExpiry);
@@ -428,15 +435,15 @@ export default function AssetPage({ assets, setAssets, history, members, permiss
               );
             })()}
           </td>
-          <td style={{ padding: "14px 20px", fontSize: 14, color: C.text, whiteSpace: "nowrap" }}
+          <td style={{ padding: "10px 12px", fontSize: 14, color: C.text, whiteSpace: "nowrap" }}
             onClick={() => { setSelected(a); setEditMode(false); }}>{a.purchaseDate && a.purchaseDate !== "-" ? displayDate(a.purchaseDate) : "-"}</td>
-          <td style={{ padding: "14px 20px", fontSize: 14, color: C.text, whiteSpace: "nowrap" }}
+          <td style={{ padding: "10px 12px", fontSize: 14, color: C.text, whiteSpace: "nowrap" }}
             onClick={() => { setSelected(a); setEditMode(false); }}>{a.purchaseCost && a.purchaseCost !== "-" ? `${Number(a.purchaseCost).toLocaleString()}원` : "-"}</td>
-          <td style={{ padding: "14px 20px", fontSize: 14, color: C.text, whiteSpace: "nowrap" }}
+          <td style={{ padding: "10px 12px", fontSize: 14, color: C.text, whiteSpace: "nowrap" }}
             onClick={() => { setSelected(a); setEditMode(false); }}>{a.vendor || "-"}</td>
-          <td style={{ padding: "14px 20px", fontSize: 13, color: C.textLight, whiteSpace: "nowrap", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis" }}
+          <td style={{ padding: "10px 12px", fontSize: 13, color: C.textLight, whiteSpace: "nowrap", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis" }}
             onClick={() => { setSelected(a); setEditMode(false); }}>{a.note || "-"}</td>
-          <td style={{ padding: "14px 20px", fontSize: 13, color: C.textLight, whiteSpace: "nowrap" }}
+          <td style={{ padding: "10px 12px", fontSize: 13, color: C.textLight, whiteSpace: "nowrap" }}
             onClick={() => { setSelected(a); setEditMode(false); }}>{displayDate(a.date)}</td>
         </tr>
       ))}
@@ -578,6 +585,33 @@ export default function AssetPage({ assets, setAssets, history, members, permiss
           </div>
         </Modal>
       )}
+      
+      {importGuideOpen && (
+        <Modal title="자산 엑셀 가져오기" onClose={() => setImportGuideOpen(false)}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            <div style={{ background: "#EFF6FF", borderRadius: 8, padding: "12px 14px", fontSize: 13, color: "#1D4ED8", lineHeight: 1.6 }}>
+              ℹ️ 아래 양식을 다운로드하여 자산 정보를 입력한 뒤 파일을 선택해주세요.<br />
+              필수 항목: <strong>자산명, 유형, 위치</strong>
+            </div>
+            <Btn variant="ghost" onClick={() => {
+              const template = XLSX.utils.book_new();
+              const ws = XLSX.utils.aoa_to_sheet([
+                ["자산명", "유형", "위치", "사용부서", "모델명", "시리얼넘버", "취득일자", "취득금액", "구입처", "보증만료일", "비고"],
+                ["노트북-예시", "노트북", "본사 3층", "경영지원사업부", "LG Gram 16", "SN-001", "2025-01-01", "1500000", "LG전자", "2027-01-01", "예시 데이터"],
+              ]);
+              XLSX.utils.book_append_sheet(template, ws, "자산목록");
+              XLSX.writeFile(template, "자산등록_양식.xlsx");
+            }}>⬇ 양식 다운로드</Btn>
+            {importError && (
+              <p style={{ margin: 0, fontSize: 13, color: C.danger }}>{importError}</p>
+            )}
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+              <Btn variant="ghost" onClick={() => { setImportGuideOpen(false); setImportError(""); }}>취소</Btn>
+              <Btn onClick={() => fileInputRef.current.click()}>📂 파일 선택</Btn>
+            </div>
+          </div>
+        </Modal>
+      )}
 
       {/* 엑셀 가져오기 미리보기 모달 */}
       {importOpen && (
@@ -611,17 +645,7 @@ export default function AssetPage({ assets, setAssets, history, members, permiss
                 </tbody>
               </table>
             </div>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8 }}>
-              <Btn variant="ghost" onClick={() => {
-                // 엑셀 양식 다운로드
-                const template = XLSX.utils.book_new();
-                const ws = XLSX.utils.aoa_to_sheet([[
-                  "자산명", "유형", "위치", "사용부서", "모델명", "시리얼넘버",
-                  "취득일자", "취득금액", "구입처", "보증만료일", "비고"
-                ]]);
-                XLSX.utils.book_append_sheet(template, ws, "자산목록");
-                XLSX.writeFile(template, "자산등록_양식.xlsx");
-              }}>양식 다운로드</Btn>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 8 }}>
               <div style={{ display: "flex", gap: 8 }}>
                 <Btn variant="ghost" onClick={() => { setImportOpen(false); setImportData([]); }}>취소</Btn>
                 <Btn onClick={handleImportConfirm}>가져오기 ({importData.length}건)</Btn>

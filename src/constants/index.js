@@ -11,7 +11,7 @@ export {
   C
 };
 
-const DEPARTMENTS = ["개발팀", "디자인팀", "마케팅팀", "HR팀", "경영지원팀"];
+const DEPARTMENTS = ["경영지원사업부", "SCM사업부", "뉴비즈니스사업부", "CIST", "GIST", "셀럭스", "기술연구소"];
 const ASSET_STATUS = {
   IN_USE: "사용중",
   UNUSED: "미사용",
@@ -28,7 +28,18 @@ const HISTORY_STYLES = {
   "상태변경": { background: "#F3F0FF", color: "#6D28D9" },
   "폐기":    { background: "#FEE2E2", color: "#991B1B" },
 };
-const ASSET_TYPES = ["노트북", "스마트폰", "태블릿", "모니터", "키보드/마우스", "헤드셋", "기타"];
+const ASSET_TYPES = [
+  "노트북",
+  "데스크탑",
+  "모니터",
+  "키보드/마우스",
+  "프린터/복합기",
+  "TV",
+  "네트워크 장비",
+  "비품",
+  "차량",
+  "기타",
+];
 const ROLES = [
   "인턴", "사원", "주임", "대리", "과장", "차장", "부장",
   "연구원", "주임연구원", "선임연구원", "책임연구원", "수석연구원",

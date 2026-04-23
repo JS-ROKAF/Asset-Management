@@ -118,12 +118,22 @@ function buildAssetSheet(assets) {
 function buildMemberSheet(members, assets) {
   const ws = {};
   const deptColors = {
-    "개발팀": "1E3A8A", "디자인팀": "5B21B6", "마케팅팀": "065F46",
-    "HR팀": "92400E", "경영지원팀": "991B1B"
+  "경영지원사업부": "1E3A8A",
+  "SCM사업부":     "065F46",
+  "뉴비즈니스사업부": "92400E",
+  "CIST":         "5B21B6",
+  "GIST":         "0E7490",
+  "셀럭스":        "9D174D",
+  "기술연구소":     "1F2937",
   };
   const deptBg = {
-    "개발팀": "DBEAFE", "디자인팀": "EDE9FE", "마케팅팀": "D1FAE5",
-    "HR팀": "FEF3C7", "경영지원팀": "FEE2E2"
+    "경영지원사업부": "DBEAFE",
+    "SCM사업부":     "D1FAE5",
+    "뉴비즈니스사업부": "FEF3C7",
+    "CIST":         "EDE9FE",
+    "GIST":         "CFFAFE",
+    "셀럭스":        "FCE7F3",
+    "기술연구소":     "F1F5F9",
   };
 
   setCell(ws, "A1", "👥 구성원 현황 리포트", titleStyle);

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-
+import * as XLSX from "xlsx";
 import {
   Btn,
   Modal,
@@ -33,7 +33,11 @@ export default function MemberPage({ members, setMembers, assets, setAssets, his
   const [filterDept, setFilterDept] = useState("전체");
   const [sortBy, setSortBy] = useState("name"); // 기본: 이름순
   const [viewMode, setViewMode] = useState("card"); // "card" | "table"
-
+  const memberFileInputRef = useRef(null);
+  const [memberImportOpen, setMemberImportOpen] = useState(false);
+  const [memberImportData, setMemberImportData] = useState([]);
+  const [memberImportError, setMemberImportError] = useState("");
+  const [memberImportGuideOpen, setMemberImportGuideOpen] = useState(false);
   const filtered = visibleMembers.filter(m => {
     const matchDept = filterDept === "전체" || m.department === filterDept;
     const matchSearch = [m.name, m.email, m.role].some(v => v.toLowerCase().includes(search.toLowerCase()));
@@ -61,6 +65,65 @@ export default function MemberPage({ members, setMembers, assets, setAssets, his
     setMembers([...members, { ...form }]);
     setAddOpen(false);
     setForm({ name: "", department: DEPARTMENTS[0], email: "", role: "사원" });
+  };
+
+  const handleMemberImportFile = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setMemberImportError("");
+
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const wb = XLSX.read(evt.target.result, { type: "binary" });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(ws, { defval: "" });
+
+        if (rows.length === 0) {
+          setMemberImportError("데이터가 없습니다.");
+          return;
+        }
+
+        const required = ["이름", "이메일", "부서", "직급"];
+        const headers = Object.keys(rows[0]);
+        const missing = required.filter(r => !headers.includes(r));
+        if (missing.length > 0) {
+          setMemberImportError(`필수 컬럼이 없습니다: ${missing.join(", ")}`);
+          return;
+        }
+
+        // 중복 이메일 체크
+        const duplicates = rows.filter(row =>
+          members.some(m => m.email.toLowerCase() === String(row["이메일"]).toLowerCase())
+        );
+        if (duplicates.length > 0) {
+          setMemberImportError(`이미 등록된 이메일: ${duplicates.map(d => d["이메일"]).join(", ")}`);
+          return;
+        }
+
+        const parsed = rows.map(row => ({
+          name: String(row["이름"] || ""),
+          email: String(row["이메일"] || ""),
+          department: String(row["부서"] || DEPARTMENTS[0]),
+          role: String(row["직급"] || "사원"),
+        }));
+
+        setMemberImportData(parsed);
+        setMemberImportGuideOpen(false);
+        setMemberImportOpen(true);
+      } catch (err) {
+        setMemberImportError("파일을 읽는 중 오류가 발생했습니다.");
+      }
+    };
+    reader.readAsBinaryString(file);
+    e.target.value = "";
+  };
+
+  const handleMemberImportConfirm = () => {
+    if (memberImportData.length === 0) return;
+    setMembers([...members, ...memberImportData]);
+    setMemberImportData([]);
+    setMemberImportOpen(false);
   };
 
   const saveMember = () => {
@@ -111,7 +174,19 @@ export default function MemberPage({ members, setMembers, assets, setAssets, his
   return (
      <main style={{ flex: 1, padding: "36px 40px", overflowY: "auto" }}>
     <PageHeader title="구성원 관리" subtitle="부서별 구성원과 배정 자산을 관리하세요"
-      action={permission !== "viewer" ? <Btn onClick={() => setAddOpen(true)}>+ 구성원 등록</Btn> : null} />
+      action={permission !== "viewer" ? (
+      <div style={{ display: "flex", gap: 8 }}>
+        <input
+          type="file"
+          accept=".xlsx,.xls"
+          ref={memberFileInputRef}
+          onChange={handleMemberImportFile}
+          style={{ display: "none" }}
+        />
+        <Btn variant="ghost" onClick={() => setMemberImportGuideOpen(true)}>⬆ 엑셀 가져오기</Btn>
+        <Btn onClick={() => setAddOpen(true)}>+ 구성원 등록</Btn>
+      </div>
+    ) : null} />
     <SummaryCards items={[
       { label: "전체", value: visibleMembers.length, color: C.primary },
       ...DEPARTMENTS.map(d => ({ label: d, value: visibleMembers.filter(m => m.department === d).length, color: C.purple }))
@@ -196,10 +271,10 @@ export default function MemberPage({ members, setMembers, assets, setAssets, his
             style={{ borderBottom: i < sorted.length - 1 ? `1px solid ${C.bg}` : "none", cursor: "pointer" }}
             onMouseEnter={e => e.currentTarget.style.background = "#F8FAFC"}
             onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
-            <td style={{ padding: "14px 20px", fontSize: 13, color: C.textMuted, whiteSpace: "nowrap" }}>
+            <td style={{ padding: "10px 12px", fontSize: 13, color: C.textMuted, whiteSpace: "nowrap" }}>
               {m.id?.slice(0, 8)}
             </td>
-            <td style={{ padding: "14px 20px" }}>
+            <td style={{ padding: "10px 12px" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                 <div style={{ width: 32, height: 32, borderRadius: "50%", background: "#EDE9FE", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, color: "#7C3AED", flexShrink: 0 }}>
                   {m.name[0]}
@@ -207,12 +282,12 @@ export default function MemberPage({ members, setMembers, assets, setAssets, his
                 <span style={{ fontSize: 14, fontWeight: 600, color: C.text }}>{m.name}</span>
               </div>
             </td>
-            <td style={{ padding: "14px 20px" }}>
+            <td style={{ padding: "10px 12px" }}>
               <span style={{ background: "#F3F0FF", color: "#7C3AED", fontSize: 11, fontWeight: 600, padding: "3px 10px", borderRadius: 99 }}>{m.department}</span>
             </td>
-            <td style={{ padding: "14px 20px", fontSize: 13, color: C.textMuted }}>{m.role}</td>
-            <td style={{ padding: "14px 20px", fontSize: 13, color: C.textMuted }}>{m.email}</td>
-            <td style={{ padding: "14px 20px", maxWidth: 200 }}>
+            <td style={{ padding: "10px 12px", fontSize: 13, color: C.textMuted }}>{m.role}</td>
+            <td style={{ padding: "10px 12px", fontSize: 13, color: C.textMuted }}>{m.email}</td>
+            <td style={{ padding: "10px 12px", maxWidth: 200 }}>
               {myAssets.length === 0
                 ? <span style={{ color: "#CBD5E1" }}>없음</span>
                 : (
@@ -235,6 +310,77 @@ export default function MemberPage({ members, setMembers, assets, setAssets, his
       }
       />
     )}
+
+      {memberImportGuideOpen && (
+        <Modal title="구성원 엑셀 가져오기" onClose={() => setMemberImportGuideOpen(false)}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            <div style={{ background: "#EFF6FF", borderRadius: 8, padding: "12px 14px", fontSize: 13, color: "#1D4ED8", lineHeight: 1.6 }}>
+              ℹ️ 아래 양식을 다운로드하여 구성원 정보를 입력한 뒤 파일을 선택해주세요.<br />
+              필수 항목: <strong>이름, 이메일, 부서, 직급</strong>
+            </div>
+
+            {/* 양식 다운로드 */}
+            <Btn variant="ghost" onClick={() => {
+              const template = XLSX.utils.book_new();
+              const ws = XLSX.utils.aoa_to_sheet([
+                ["이름", "이메일", "부서", "직급"],
+                ["홍길동", "hong@durae.com", "경영지원사업부", "사원"],
+              ]);
+              XLSX.utils.book_append_sheet(template, ws, "구성원목록");
+              XLSX.writeFile(template, "구성원등록_양식.xlsx");
+            }}>⬇ 양식 다운로드</Btn>
+
+            {memberImportError && (
+              <p style={{ margin: 0, fontSize: 13, color: C.danger }}>{memberImportError}</p>
+            )}
+
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+              <Btn variant="ghost" onClick={() => { setMemberImportGuideOpen(false); setMemberImportError(""); }}>취소</Btn>
+              <Btn onClick={() => memberFileInputRef.current.click()}>📂 파일 선택</Btn>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {memberImportOpen && (
+        <Modal title={`구성원 가져오기 (${memberImportData.length}명)`} onClose={() => { setMemberImportOpen(false); setMemberImportData([]); }} wide>
+          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            <div style={{ background: "#EFF6FF", borderRadius: 8, padding: "10px 14px", fontSize: 13, color: "#1D4ED8" }}>
+              ℹ️ 아래 구성원이 등록됩니다. 확인 후 가져오기를 눌러주세요.
+            </div>
+            <div style={{ overflowX: "auto", maxHeight: 320, overflowY: "auto", borderRadius: 8, border: `1px solid ${C.border}` }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                <thead>
+                  <tr style={{ background: "#F8FAFC", borderBottom: `1px solid ${C.border}` }}>
+                    {["이름", "이메일", "부서", "직급"].map(h => (
+                      <th key={h} style={{ padding: "8px 12px", textAlign: "left", fontWeight: 600, color: C.textMuted, whiteSpace: "nowrap" }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {memberImportData.map((m, i) => (
+                    <tr key={i} style={{ borderBottom: `1px solid ${C.bg}` }}>
+                      <td style={{ padding: "8px 12px" }}>{m.name}</td>
+                      <td style={{ padding: "8px 12px" }}>{m.email}</td>
+                      <td style={{ padding: "8px 12px" }}>{m.department}</td>
+                      <td style={{ padding: "8px 12px" }}>{m.role}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {memberImportError && (
+              <p style={{ margin: 0, fontSize: 13, color: C.danger }}>{memberImportError}</p>
+            )}
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 8 }}>
+              <div style={{ display: "flex", gap: 8 }}>
+                <Btn variant="ghost" onClick={() => { setMemberImportOpen(false); setMemberImportData([]); }}>취소</Btn>
+                <Btn onClick={handleMemberImportConfirm}>가져오기 ({memberImportData.length}명)</Btn>
+              </div>
+            </div>
+          </div>
+        </Modal>
+      )}
 
       {addOpen && (
         <Modal title="구성원 등록" onClose={() => setAddOpen(false)}>

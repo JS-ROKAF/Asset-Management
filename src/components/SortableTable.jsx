@@ -8,12 +8,12 @@ export default function SortableTable({ headers, rows, sortKey, sortDir, onSort,
         <thead>
           <tr style={{ background: "#F8FAFC", borderBottom: `1px solid ${C.border}` }}>
             {extraHeader && <th style={{ padding: "12px 16px", width: 40 }}>{extraHeader}</th>}
-            {headers.map(({ label, key }) => (
+            {headers.map(({ label, key, width }) => (
               <th
                 key={label}
                 onClick={() => key && onSort(key)}
                 style={{
-                  padding: "12px 20px",
+                  padding: "10px 12px",
                   textAlign: "left",
                   fontSize: 12,
                   fontWeight: 600,
@@ -21,7 +21,9 @@ export default function SortableTable({ headers, rows, sortKey, sortDir, onSort,
                   letterSpacing: "0.04em",
                   cursor: key ? "pointer" : "default",
                   userSelect: "none",
-                  whiteSpace: "nowrap"
+                  whiteSpace: "nowrap",
+                  width: width,          
+                  maxWidth: width
                 }}
               >
                 {label}
