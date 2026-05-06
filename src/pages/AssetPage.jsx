@@ -24,6 +24,7 @@ import {
 } from "../components/common";
 import { SortableTable } from "../components";
 import * as XLSX from "xlsx";
+import { QRCodeSVG } from "qrcode.react";
 
 // ── 자산관리 ──
 export default function AssetPage({ assets, setAssets, history, members, permission, userDept, requests, setRequests, currentUser, focusAssetId, onFocusCleared }) {
@@ -55,6 +56,7 @@ export default function AssetPage({ assets, setAssets, history, members, permiss
   const [importData, setImportData] = useState([]);       // 파싱된 데이터
   const [importError, setImportError] = useState("");     // 오류 메시지
   const [importGuideOpen, setImportGuideOpen] = useState(false);
+  const [showQR, setShowQR] = useState(false);
   const fileInputRef = useRef(null);
   
   
@@ -832,43 +834,65 @@ export default function AssetPage({ assets, setAssets, history, members, permiss
                 </div>
                 <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
                 {/*<div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>*/}
-                <Btn variant="ghost" small onClick={() => {
-                  const baseUrl = "https://assetmanagement-seven.vercel.app";
-                  const printWin = window.open("", "_blank", "width=420,height=500");
+                {/* QR 모달 */}
+                {showQR && selected && (
+                  <div
+                    style={{
+                      position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      zIndex: 9999
+                    }}
+                    onClick={() => setShowQR(false)}
+                  >
+                    <div
+                      id="qr-print-area"
+                      style={{
+                        background: "#fff", borderRadius: 16, padding: "32px 36px",
+                        display: "flex", flexDirection: "column", alignItems: "center",
+                        gap: 10, boxShadow: "0 8px 32px rgba(0,0,0,0.18)"
+                      }}
+                      onClick={e => e.stopPropagation()}
+                    >
+                      <QRCodeSVG
+                        value={`https://assetmanagement-seven.vercel.app/#/assets/${selected.id}`}
+                        size={200}
+                      />
+                      <p style={{ margin: 0, fontWeight: 700, fontSize: 16, color: "#0F172A" }}>{selected.name}</p>
+                      <p style={{ margin: 0, fontSize: 12, color: "#64748B" }}>자산번호: {selected.id.slice(0, 8)}</p>
+                      <p style={{ margin: 0, fontSize: 12, color: "#64748B" }}>{selected.type || "기타"} · {selected.department || "-"}</p>
+                      <p style={{ margin: 0, fontSize: 12, color: "#64748B" }}>위치: {selected.location || "-"}</p>
+                      <button
+                        onClick={() => {
+                          const area = document.getElementById("qr-print-area");
+                          const original = document.body.innerHTML;
+                          document.body.innerHTML = area.innerHTML;
+                          window.print();
+                          document.body.innerHTML = original;
+                          window.location.reload();
+                        }}
+                        style={{
+                          marginTop: 8, padding: "8px 24px", background: "#6366F1",
+                          color: "#fff", border: "none", borderRadius: 8,
+                          fontSize: 13, fontWeight: 600, cursor: "pointer"
+                        }}
+                      >
+                        🖨️ 인쇄
+                      </button>
+                      <button
+                        onClick={() => setShowQR(false)}
+                        style={{
+                          padding: "6px 20px", background: "#F1F5F9", color: "#64748B",
+                          border: "none", borderRadius: 8, fontSize: 13, cursor: "pointer"
+                        }}
+                      >
+                        닫기
+                      </button>
+                    </div>
+                  </div>
+                )}
 
-                    // 팝업 차단 시 null 체크
-                    if (!printWin) {
-                      alert("팝업이 차단되어 있습니다.\n브라우저 주소창 우측의 팝업 차단 아이콘을 클릭해서 허용해 주세요.");
-                      return;
-                    }
-                  printWin.document.write(`
-                    <html><head><title>QR - ${selected.name}</title>
-                    <style>
-                      body{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;gap:0;margin:0;}
-                      .box{border:1px solid #E2E8F0;border-radius:12px;padding:24px 28px;display:flex;flex-direction:column;align-items:center;gap:8px;}
-                      .name{margin:0;font-size:15px;font-weight:700;color:#0F172A;}
-                      .info{margin:0;font-size:11px;color:#64748B;}
-                    </style></head>
-                    <body>
-                      <div class="box">
-                        <div id="qr"></div>
-                        <p class="name">${selected.name}</p>
-                        <p class="info">자산번호: ${selected.id.slice(0, 8)}</p>
-                        <p class="info">유형: ${selected.type || "기타"} · ${selected.department || "-"}</p>
-                        <p class="info">위치: ${selected.location || "-"}</p>
-                      </div>
-                      <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-                      <script>
-                        new QRCode(document.getElementById("qr"), {
-                           text: "${baseUrl}/#/assets/${selected.id}",
-                          width: 180, height: 180
-                        });
-                        setTimeout(() => window.print(), 500);
-                      </script>
-                    </body></html>
-                  `);
-                  printWin.document.close();
-                }}>🔲 QR 출력</Btn>
+                {/* 기존 버튼 교체 */}
+                <Btn variant="ghost" small onClick={() => setShowQR(true)}>🔲 QR 출력</Btn> 
 
                 {/* viewer/manager: 요청 버튼 */}
                 {permission !== "admin" && (
