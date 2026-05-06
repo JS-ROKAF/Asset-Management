@@ -25,13 +25,11 @@ export const updateMembers = async (prev, newMembers, setMembersState) => {
     if (error) { setMembersState(prev); alert("구성원 삭제 실패: " + error.message); return; }
   }
   if (updated.length) {
-    for (const u of updated) {
-      const { error } = await supabase.from("members").update(u).eq("id", u.id);
-      if (error) {
-        setMembersState(prev);
-        alert("구성원 수정 실패: " + error.message);
-        return;
-      }
-    }
+    const results = await Promise.all(
+      updated.map(u => supabase.from("members").update(u).eq("id", u.id))
+    );
+    const failed = results.find(r => r.error);
+    if (failed) { setMembersState(prev); alert("구성원 수정 실패: " + failed.error.message); return; }
   }
 };
+

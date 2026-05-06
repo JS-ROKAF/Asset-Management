@@ -72,15 +72,15 @@ export default function AssetPage({ assets, setAssets, history, members, permiss
 
   useEffect(() => { setCurrentPage(1); }, [search, filterStatus, filterDept, filterType]);
   useEffect(() => {
-  if (focusAssetId) {
-    const asset = assets.find(a => a.id === focusAssetId);
-    if (asset) {
-      setSelected(asset);
-      setEditMode(false);
+    if (focusAssetId) {
+      const asset = assets.find(a => a.id === focusAssetId);
+      if (asset) {
+        setSelected(asset);
+        setEditMode(false);
+      }
+      onFocusCleared();
     }
-    onFocusCleared();
-  }
-}, [focusAssetId]);
+  }, [focusAssetId, assets]);
 
   const base = visibleAssets.filter(a => {
   const matchStatus = filterStatus === "전체" || a.status === filterStatus;
@@ -152,6 +152,17 @@ export default function AssetPage({ assets, setAssets, history, members, permiss
 
   const handleImportConfirm = () => {
     if (importData.length === 0) return;
+
+    // 시리얼 중복 체크
+    const duplicates = importData.filter(a =>
+      a.serial && a.serial !== "-" &&
+      assets.find(existing => existing.serial === a.serial)
+    );
+    if (duplicates.length > 0) {
+      alert(`중복된 시리얼 넘버가 있습니다:\n${duplicates.map(a => `${a.name} (${a.serial})`).join("\n")}`);
+      return;
+    }
+
     const histories = importData.map((a, i) =>
       makeHistory("입고", a, "-", "-", "엑셀 일괄 입고", i)
     );
@@ -189,7 +200,7 @@ export default function AssetPage({ assets, setAssets, history, members, permiss
 
     for (let i = 0; i < qty; i++) {
       const newAsset = {
-        id: "A" + Math.floor(Math.random() * 900000 + 100000),
+        id: "A" + Date.now() + i,
         name: form.name,
         type: form.type || "기타",
         status: isAssigned ? "사용중" : "미사용",
@@ -822,7 +833,14 @@ export default function AssetPage({ assets, setAssets, history, members, permiss
                 <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
                 {/*<div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>*/}
                 <Btn variant="ghost" small onClick={() => {
+                  const baseUrl = "https://assetmanagement-seven.vercel.app";
                   const printWin = window.open("", "_blank", "width=420,height=500");
+
+                    // 팝업 차단 시 null 체크
+                    if (!printWin) {
+                      alert("팝업이 차단되어 있습니다.\n브라우저 주소창 우측의 팝업 차단 아이콘을 클릭해서 허용해 주세요.");
+                      return;
+                    }
                   printWin.document.write(`
                     <html><head><title>QR - ${selected.name}</title>
                     <style>
@@ -842,7 +860,7 @@ export default function AssetPage({ assets, setAssets, history, members, permiss
                       <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
                       <script>
                         new QRCode(document.getElementById("qr"), {
-                          text: "${selected.id}",
+                           text: "${baseUrl}/#/assets/${selected.id}",
                           width: 180, height: 180
                         });
                         setTimeout(() => window.print(), 500);
@@ -870,9 +888,9 @@ export default function AssetPage({ assets, setAssets, history, members, permiss
                         resolvedNote: "-",
                         resolvedDate: "-",
                       };
-                      supabase.from("requests").insert(req).then(({ error }) => {
+                      supabase.from("requests").insert(req).select().single().then(({ data, error }) => {
                         if (error) { alert("요청 실패: " + error.message); return; }
-                        setRequests([req, ...requests]);
+                        setRequests([data, ...requests]);
                         alert("반납 요청이 접수되었습니다.");
                         setSelected(null);
                       });

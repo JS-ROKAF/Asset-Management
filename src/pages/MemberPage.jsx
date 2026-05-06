@@ -40,7 +40,7 @@ export default function MemberPage({ members, setMembers, assets, setAssets, his
   const [memberImportGuideOpen, setMemberImportGuideOpen] = useState(false);
   const filtered = visibleMembers.filter(m => {
     const matchDept = filterDept === "전체" || m.department === filterDept;
-    const matchSearch = [m.name, m.email, m.role].some(v => v.toLowerCase().includes(search.toLowerCase()));
+    const matchSearch = [m.name, m.email, m.role].some(v => v?.toLowerCase().includes(search.toLowerCase()));
     return matchDept && matchSearch;
   });
 

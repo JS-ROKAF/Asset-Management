@@ -198,6 +198,7 @@ export default function App() {
           setRequests={setRequestsState}
           assets={assets}
           setAssets={updateAssetsWrapper}
+          setHistory={setHistoryState}  
           members={members}
           permission={permission}
           userDept={userDept}

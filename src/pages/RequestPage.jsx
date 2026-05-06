@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { supabase } from "../supabase";
+import { updateAssets } from "../services/assetService";
 
 import {
   Btn,
@@ -18,7 +19,7 @@ import { C } from "../constants";
 import { makeHistory } from "../utils/history";
 import { displayDate, toKST } from "../utils/date";
 
-export default function RequestPage({ requests, setRequests, assets, setAssets, members, permission, userDept, currentUser }) {
+export default function RequestPage({ requests, setRequests, assets, setAssets, setHistory, members, permission, userDept, currentUser }) {
   const [filterStatus, setFilterStatus] = useState("전체");
   const [resolveOpen, setResolveOpen] = useState(false);
   const [selectedReq, setSelectedReq] = useState(null);
@@ -55,18 +56,20 @@ export default function RequestPage({ requests, setRequests, assets, setAssets, 
 
     if (approve && selectedReq.type === "반납요청") {
       const asset = assets.find(a => a.id === selectedReq.assetId);
-      if (asset) {
-        const updatedAsset = { ...asset, user: "-", status: "미사용" };
-        const histories = [makeHistory("반납", updatedAsset, asset.user, "-", `요청 승인: ${resolveNote || "반납 처리"}`)];
-        setAssets(assets.map(a => a.id === asset.id ? updatedAsset : a), histories);
-      }
+      // ✅ 자산 없을 경우 알림 추가
+      if (!asset) { alert("해당 자산을 찾을 수 없습니다. 자산이 삭제되었을 수 있어요."); return; }
+      const updatedAsset = { ...asset, user: "-", status: "미사용" };
+      const histories = [makeHistory("반납", asset, asset.user, "-", `요청 승인: ${resolveNote || "반납 처리"}`)];
+      // ✅ updateAssetsWrapper로 이력까지 저장
+      await setAssets(assets.map(a => a.id === asset.id ? updatedAsset : a), histories);
     } else if (approve && selectedReq.type === "배정요청") {
       const asset = assets.find(a => a.id === selectedReq.assetId);
-      if (asset) {
-        const updatedAsset = { ...asset, user: selectedReq.targetUser, status: "사용중" };
-        const histories = [makeHistory("배정", updatedAsset, "-", selectedReq.targetUser, `요청 승인: ${resolveNote || "배정 처리"}`)];
-        setAssets(assets.map(a => a.id === asset.id ? updatedAsset : a), histories);
-      }
+      // ✅ 자산 없을 경우 알림 추가
+      if (!asset) { alert("해당 자산을 찾을 수 없습니다. 자산이 삭제되었을 수 있어요."); return; }
+      const updatedAsset = { ...asset, user: selectedReq.targetUser, status: "사용중" };
+      const histories = [makeHistory("배정", asset, "-", selectedReq.targetUser, `요청 승인: ${resolveNote || "배정 처리"}`)];
+      // ✅ updateAssetsWrapper로 이력까지 저장
+      await setAssets(assets.map(a => a.id === asset.id ? updatedAsset : a), histories);
     }
 
     setRequests(requests.map(r => r.id === selectedReq.id ? updatedReq : r));
@@ -213,7 +216,7 @@ export default function RequestPage({ requests, setRequests, assets, setAssets, 
                 };
                 supabase.from("requests").insert(req).select().single().then(({ data, error }) => {
                   if (error) { alert("요청 실패: " + error.message); return; }
-                  setRequests([req, ...requests]);
+                  ssetRequests([data, ...requests]);
                   alert("배정 요청이 접수되었습니다.");
                   setAssignReqOpen(false);
                   setAssignNote("");

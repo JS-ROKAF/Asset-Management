@@ -32,6 +32,7 @@ export default function LoginPage({
             placeholder="Admin Email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
+            onKeyDown={e => { if (e.key === "Enter") onLogin(); }} 
             style={styles.input}
           />
         </div>
@@ -43,6 +44,7 @@ export default function LoginPage({
             placeholder="Password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
+            onKeyDown={e => { if (e.key === "Enter") onLogin(); }}
             style={styles.input}
           />
         </div>

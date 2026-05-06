@@ -1,8 +1,6 @@
 import * as XLSX from "xlsx";
 import { saveAs } from "file-saver";
 
-const STATUS_KO = { "사용중": "사용중", "미사용": "미사용", "수리중": "수리중" };
-
 // 셀 스타일 헬퍼
 const headerStyle = (color = "1E40AF") => ({
   font: { bold: true, color: { rgb: "FFFFFF" }, sz: 11 },
@@ -265,7 +263,8 @@ function buildSummarySheet(assets, members) {
     const count = assets.filter(a => a.location === loc).length;
     setCell(ws, `A${row}`, loc, cellStyle(bg));
     setCell(ws, `B${row}`, count, { ...cellStyle(bg), alignment: { horizontal: "center" } });
-    setCell(ws, `C${row}`, `${((count / assets.length) * 100).toFixed(1)}%`, { ...cellStyle(bg), alignment: { horizontal: "center" } });
+    const pct = assets.length > 0 ? ((count / assets.length) * 100).toFixed(1) : "0";
+    setCell(ws, `C${row}`, `${pct}%`, { ...cellStyle(bg), alignment: { horizontal: "center" } });
   });
 
   // 수리중 자산 목록

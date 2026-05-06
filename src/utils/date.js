@@ -22,8 +22,8 @@ const displayAge = (dateStr) => {
   return months > 0 ? `${years}년 ${months}개월` : `${years}년`;
 };
 
-const toKST = () => {
-  return new Date().toLocaleString("sv-SE", {
+const toKST = (offsetMs = 0) => {
+  return new Date(Date.now() + offsetMs).toLocaleString("sv-SE", {
     timeZone: "Asia/Seoul",
     hour12: false
   });

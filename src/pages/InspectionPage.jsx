@@ -53,11 +53,12 @@ export default function InspectionPage({ inspections, setInspections, inspection
       note: "-",
       confirmedDate: "-",
     }));
-    const { error: itemError } = await supabase.from("inspection_items").insert(items);
+    const { data: itemData, error: itemError } = await supabase
+      .from("inspection_items").insert(items).select(); 
     if (itemError) { alert("실사 항목 생성 실패: " + itemError.message); return; }
+    setInspectionItems([...inspectionItems, ...itemData]); 
 
     setInspections([data, ...inspections]);
-    setInspectionItems([...inspectionItems, ...items]);
     setCreateOpen(false);
     setForm({ title: "", startDate: "", endDate: "", note: "" });
     alert(`실사가 생성되었습니다. 총 ${items.length}개 자산이 등록되었습니다.`);
@@ -90,11 +91,17 @@ export default function InspectionPage({ inspections, setInspections, inspection
       const item = items.find(i => i.assetId === a.id);
       if (!item) return a;
       if (item.status === "없음" && a.status !== "미사용") {
-        histories.push(makeHistory("상태변경", a, a.user, a.user, "실사 결과: 없음 → 미사용 처리"));
+        if (a.user && a.user !== "-") {
+          histories.push(makeHistory("반납", a, a.user, "-", "실사 결과: 없음으로 인한 자동 반납"));
+        }
+        histories.push(makeHistory("상태변경", a, "-", "-", "실사 결과: 없음 → 미사용 처리"));
         return { ...a, status: "미사용", user: "-" };
       }
       if (item.status === "분실" && a.status !== "분실") {
-        histories.push(makeHistory("상태변경", a, a.user, a.user, "실사 결과: 분실 처리"));
+        if (a.user && a.user !== "-") {
+          histories.push(makeHistory("반납", a, a.user, "-", "실사 결과: 분실로 인한 자동 반납"));
+        }
+        histories.push(makeHistory("상태변경", a, "-", "-", "실사 결과: 분실 처리"));
         return { ...a, status: "분실", user: "-" };
       }
       return a;
@@ -172,9 +179,9 @@ export default function InspectionPage({ inspections, setInspections, inspection
                       <button onClick={async (e) => {
                         e.stopPropagation();
                         if (!window.confirm(`'${ins.title}' 실사를 삭제할까요?\n관련 실사 항목도 모두 삭제됩니다.`)) return;
-                        await supabase.from("inspection_items").delete().eq("inspectionId", ins.id);
                         const { error } = await supabase.from("inspections").delete().eq("id", ins.id);
                         if (error) { alert("삭제 실패: " + error.message); return; }
+                        await supabase.from("inspection_items").delete().eq("inspectionId", ins.id);
                         setInspections(inspections.filter(i => i.id !== ins.id));
                         setInspectionItems(inspectionItems.filter(i => i.inspectionId !== ins.id));
                       }}

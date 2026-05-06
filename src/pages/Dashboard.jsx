@@ -222,7 +222,7 @@ function SupabaseMonitor({ permission, history }) {
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <h3 style={{ margin: 0, fontSize: 13, fontWeight: 700, color: C.text }}>
-            🔌 Supabase 연동 현황
+            Supabase 연동 현황
           </h3>
           {/* 전체 상태 표시 */}
           <span style={{
@@ -402,6 +402,7 @@ export default function Dashboard({ assets, members, history, permission, userDe
   }));
 
   const today = new Date();
+  today.setHours(0, 0, 0, 0);
   const thirtyDaysLater = new Date(today.getTime() + 30 * 24 * 60 * 60 * 1000);
 
   const warningAssets = filteredAssets.filter(a => {
@@ -440,7 +441,6 @@ export default function Dashboard({ assets, members, history, permission, userDe
       return (
         <div style={{ 
           backgroundColor: "rgba(255, 255, 255, 0.95)", 
-          border: "none", 
           borderRadius: "10px", 
           padding: "12px 16px", 
           boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)",
@@ -578,7 +578,7 @@ export default function Dashboard({ assets, members, history, permission, userDe
         {/* 오른쪽 컬럼 (기존 로직 유지) */}
         <div style={{ display: "flex", flexDirection: "column", gap: 14, minHeight: 0 }}>
           <div style={{ background: C.card, borderRadius: 12, padding: "16px 20px", flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
-            <h3 style={{ margin: "0 0 10px", fontSize: 13, fontWeight: 700 }}>⚠️ 알림</h3>
+            <h3 style={{ margin: "0 0 10px", fontSize: 13, fontWeight: 700 }}>알림</h3>
             <div style={{ display: "flex", flexDirection: "column", gap: 6, flex: 1, overflowY: "auto" }}>
               {expiredAssets.map(a => (<div key={a.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 10px", background: "#FEF2F2", borderRadius: 8 }}><span style={{ fontSize: 11, fontWeight: 700, color: C.danger, background: "#FEE2E2", padding: "2px 6px", borderRadius: 4 }}>만료</span><span style={{ fontSize: 12, flex: 1 }}>{a.name}</span></div>))}
               {warningAssets.map(a => (<div key={a.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 10px", background: "#FFF7ED", borderRadius: 8 }}><span style={{ fontSize: 11, fontWeight: 700, color: "#F97316", background: "#FFEDD5", padding: "2px 6px", borderRadius: 4 }}>임박</span><span style={{ fontSize: 12, flex: 1 }}>{a.name}</span></div>))}
