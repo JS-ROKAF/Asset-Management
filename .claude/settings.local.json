@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(rtk ls *)",
+      "Bash(Get-ChildItem C:\\\\Users\\\\user\\\\Desktop\\\\WORK\\\\CODING\\\\ASSET_mgmt -Depth 1)",
+      "Bash(Select-Object Name, PSIsContainer)",
+      "PowerShell(git *)",
+      "Bash(npm --version)"
+    ]
+  }
+}

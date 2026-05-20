@@ -47,6 +47,11 @@ export const updateAssets = async (prev, newAssets, setAssetsState, setHistorySt
       const { error } = await supabase.from("assets").update(u).eq("id", u.id);
       if (error) { setAssetsState(prev); alert("수정 실패: " + error.message); return; }
     }
+    // added 블록에서 처리되지 않은 이력 저장
+    if (!added.length && histories.length > 0) {
+      const { error: hError } = await supabase.from("history").insert(histories);
+      if (hError) { alert("이력 저장 실패: " + hError.message); return; }
+    }
   }
 
   // history 최신 데이터 재조회 (항상 마지막에 실행)

@@ -8,6 +8,10 @@ export default function AssetPublicDetail({ assetId }) {
   const [notFound, setNotFound] = useState(false);
   const [session, setSession] = useState(null);
   const [authChecked, setAuthChecked] = useState(false);
+  const [inspectionItem, setInspectionItem] = useState(null);
+  const [activeInspectionId, setActiveInspectionId] = useState(null);
+  const [inspectionConfirmed, setInspectionConfirmed] = useState(false);
+  const [inspectionLoading, setInspectionLoading] = useState(false);
 
   // 1. 세션 확인
   useEffect(() => {
@@ -22,21 +26,41 @@ export default function AssetPublicDetail({ assetId }) {
     return () => subscription.unsubscribe();
   }, []);
 
-  // 2. 로그인 됐을 때만 자산 조회
+  // 2. 로그인 됐을 때만 자산 조회 + 진행중 실사 확인
   useEffect(() => {
     if (!session) return;
 
-    supabase
-      .from("assets")
-      .select("*")
-      .eq("id", assetId)
-      .single()
-      .then(({ data, error }) => {
-        if (error || !data) setNotFound(true);
-        else setAsset(data);
-        setLoading(false);
-      });
+    const load = async () => {
+      const { data: assetData, error: assetError } = await supabase
+        .from("assets").select("*").eq("id", assetId).single();
+      if (assetError || !assetData) { setNotFound(true); setLoading(false); return; }
+      setAsset(assetData);
+
+      const { data: ins } = await supabase
+        .from("inspections").select("id").eq("status", "진행중").limit(1).maybeSingle();
+      if (ins) {
+        setActiveInspectionId(ins.id);
+        const { data: item } = await supabase
+          .from("inspection_items")
+          .select("*").eq("inspectionId", ins.id).eq("assetId", assetId).maybeSingle();
+        if (item) setInspectionItem(item);
+      }
+      setLoading(false);
+    };
+    load();
   }, [session, assetId]);
+
+  const confirmInspectionItem = async (status) => {
+    if (!inspectionItem) return;
+    setInspectionLoading(true);
+    const kst = new Date().toLocaleString("sv-SE", { timeZone: "Asia/Seoul" });
+    const updated = { ...inspectionItem, status, confirmedBy: session.user.email, confirmedDate: kst };
+    const { error } = await supabase.from("inspection_items").update(updated).eq("id", inspectionItem.id);
+    if (error) { alert("확인 실패: " + error.message); setInspectionLoading(false); return; }
+    setInspectionItem(updated);
+    setInspectionConfirmed(true);
+    setInspectionLoading(false);
+  };
 
   // 인증 확인 중
   if (!authChecked) return (
@@ -111,6 +135,42 @@ export default function AssetPublicDetail({ assetId }) {
             ) : null
           )}
         </div>
+        {/* 실사 체크 섹션 */}
+        {inspectionItem && activeInspectionId && (
+          inspectionItem.status === "미확인" && !inspectionConfirmed ? (
+            <div style={{ padding: "16px 24px", borderTop: "1px solid #F1F5F9", background: "#FFFBEB" }}>
+              <p style={{ margin: "0 0 12px", fontSize: 13, fontWeight: 700, color: "#92400E" }}>
+                📋 실사 진행중 — 이 자산의 보유 상태를 확인해 주세요
+              </p>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button
+                  onClick={() => confirmInspectionItem("보유중")}
+                  disabled={inspectionLoading}
+                  style={{ flex: 1, padding: "11px 0", background: "#D1FAE5", color: "#065F46", border: "none", borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: inspectionLoading ? "not-allowed" : "pointer" }}>
+                  ✅ 보유중
+                </button>
+                <button
+                  onClick={() => confirmInspectionItem("없음")}
+                  disabled={inspectionLoading}
+                  style={{ flex: 1, padding: "11px 0", background: "#FEE2E2", color: "#991B1B", border: "none", borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: inspectionLoading ? "not-allowed" : "pointer" }}>
+                  ❌ 없음
+                </button>
+                <button
+                  onClick={() => confirmInspectionItem("분실")}
+                  disabled={inspectionLoading}
+                  style={{ flex: 1, padding: "11px 0", background: "#FFF7ED", color: "#C2410C", border: "none", borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: inspectionLoading ? "not-allowed" : "pointer" }}>
+                  🔍 분실
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div style={{ padding: "12px 24px", borderTop: "1px solid #F1F5F9", background: "#F0FDF4", display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ fontSize: 13, color: "#16A34A", fontWeight: 600 }}>
+                ✅ 실사 확인 완료 — {inspectionItem.status}
+              </span>
+            </div>
+          )
+        )}
         <div style={styles.footer}>
           <p style={{ margin: 0, fontSize: 11, color: "#CBD5E1" }}>📅 등록일: {asset.date || "-"}</p>
         </div>

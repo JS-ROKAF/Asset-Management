@@ -29,7 +29,8 @@ import { QRCodeSVG } from "qrcode.react";
 // ── 자산관리 ──
 export default function AssetPage({ assets, setAssets, history, members, permission, userDept, requests, setRequests, currentUser, focusAssetId, onFocusCleared }) {
   // 부서장/뷰어면 자기 부서 자산만
-  const visibleAssets = permission === "admin" ? assets : assets.filter(a => a.department === userDept);
+  const visibleAssets = (permission === "admin" ? assets : assets.filter(a => a.department === userDept))
+    .filter(a => !a.isDisposed);
   const [addOpen, setAddOpen] = useState(false);
   const [form, setForm] = useState({
     name: "", type: "기타", location: "", user: "",
@@ -57,6 +58,8 @@ export default function AssetPage({ assets, setAssets, history, members, permiss
   const [importError, setImportError] = useState("");     // 오류 메시지
   const [importGuideOpen, setImportGuideOpen] = useState(false);
   const [showQR, setShowQR] = useState(false);
+  const [disposeOpen, setDisposeOpen] = useState(false);
+  const [disposeForm, setDisposeForm] = useState({ reason: "", method: "폐기" });
   const fileInputRef = useRef(null);
   
   
@@ -265,7 +268,8 @@ export default function AssetPage({ assets, setAssets, history, members, permiss
     } else if (updated.status === "수리중" && updated.user !== "-" && updated.user !== "미배정") {
       const prevUser = updated.user;
       updated.user = "-";
-      histories.push(makeHistory("반납", updated, prevUser, "-", "수리 입고로 인한 자동 반납"));
+      histories.push(makeHistory("반납", updated, prevUser, "-", "수리 입고로 인한 자동 반납", 0));
+      histories.push(makeHistory("상태변경", updated, "-", "-", buildRepairNote(editForm), 1));
     } else if (updated.status === "분실" && updated.user !== "-" && updated.user !== "미배정") {
       const prevUser = updated.user;
       updated.user = "-";
@@ -280,22 +284,48 @@ export default function AssetPage({ assets, setAssets, history, members, permiss
         histories.push(makeHistory("배정", updated, "-", updated.user, `${prev.user}에서 ${updated.user}으로 재배정`, 1));
       }
     } else if (statusChanged && !userChanged) {
-      histories.push(makeHistory("상태변경", updated, updated.user, updated.user, `${prev.status} → ${updated.status}`));
+      const note = updated.status === "수리중" && prev.status !== "수리중"
+        ? buildRepairNote(editForm)
+        : `${prev.status} → ${updated.status}`;
+      histories.push(makeHistory("상태변경", updated, updated.user, updated.user, note));
     }
 
-    setAssets(assets.map(a => a.id === updated.id ? updated : a), histories);
-    setSelected(updated);
+    // repair 임시 필드는 DB에 저장하지 않음
+    const { repairVendor, repairCost, repairDetail, repairExpectedDate, ...assetToSave } = updated;
+    setAssets(assets.map(a => a.id === assetToSave.id ? assetToSave : a), histories);
+    setSelected(assetToSave);
     setEditMode(false);
   };
 
-  const deleteAsset = () => {
-    if (!window.confirm(`'${selected.name}'을(를) 삭제할까요?`)) return;
+  const buildRepairNote = (form) => {
+    const parts = ["수리 접수"];
+    if (form.repairVendor) parts.push(`업체: ${form.repairVendor}`);
+    if (form.repairCost) parts.push(`비용: ${Number(form.repairCost).toLocaleString()}원`);
+    if (form.repairDetail) parts.push(`내용: ${form.repairDetail}`);
+    if (form.repairExpectedDate) parts.push(`완료예정: ${form.repairExpectedDate}`);
+    return parts.join(" | ");
+  };
+
+  const disposeAsset = () => {
+    if (!disposeForm.reason.trim()) { alert("폐기 사유를 입력해 주세요."); return; }
     const histories = [];
     if (selected.user && selected.user !== "-") {
-      histories.push(makeHistory("반납", selected, selected.user, "-", "자산 삭제로 인한 자동 반납", 0));
+      histories.push(makeHistory("반납", selected, selected.user, "-", "폐기 처리로 인한 자동 반납", 0));
     }
-    histories.push(makeHistory("폐기", selected, selected.user ?? "-", "-", "자산 삭제(폐기)", selected.user && selected.user !== "-" ? 1 : 0));
-    setAssets(assets.filter(a => a.id !== selected.id), histories);
+    const noteText = `[${disposeForm.method}] ${disposeForm.reason}`;
+    histories.push(makeHistory("폐기", selected, selected.user ?? "-", "-", noteText, selected.user && selected.user !== "-" ? 1 : 0));
+    const disposed = {
+      ...selected,
+      isDisposed: true,
+      status: "미사용",
+      user: "-",
+      disposalReason: disposeForm.reason,
+      disposalMethod: disposeForm.method,
+      disposalDate: toKST(),
+    };
+    setAssets(assets.map(a => a.id === selected.id ? disposed : a), histories);
+    setDisposeOpen(false);
+    setDisposeForm({ reason: "", method: "폐기" });
     setSelected(null);
   };
 
@@ -783,6 +813,17 @@ export default function AssetPage({ assets, setAssets, history, members, permiss
                   ⚠️ 상태를 '{editForm.status}'으로 변경하면 사용자가 자동으로 초기화됩니다.
                 </div>
               )}
+              {editForm.status === "수리중" && selected?.status !== "수리중" && (
+                <div style={{ background: "#EFF6FF", borderRadius: 10, padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
+                  <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: "#1D4ED8" }}>수리 정보 입력 (선택)</p>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                    <InputField label="수리업체" value={editForm.repairVendor || ""} onChange={v => setEditForm({ ...editForm, repairVendor: v })} />
+                    <InputField label="수리비용 (원)" value={editForm.repairCost || ""} type="number" onChange={v => setEditForm({ ...editForm, repairCost: v })} />
+                  </div>
+                  <InputField label="수리내용" value={editForm.repairDetail || ""} onChange={v => setEditForm({ ...editForm, repairDetail: v })} />
+                  <InputField label="완료 예정일" value={editForm.repairExpectedDate || ""} type="date" onChange={v => setEditForm({ ...editForm, repairExpectedDate: v })} />
+                </div>
+              )}
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                 <label style={{ fontSize: 12, color: C.textMuted, fontWeight: 600 }}>비고</label>
                 <textarea value={editForm.note || ""} onChange={e => setEditForm({ ...editForm, note: e.target.value })}
@@ -825,9 +866,9 @@ export default function AssetPage({ assets, setAssets, history, members, permiss
                     ? assetHistory.map(h => (
                       <div key={h.id} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
                         <HistoryBadge type={h.type} />
-                        <span style={{ fontSize: 13, color: "#475569", flex: 1 }}>{displayUser(h.from)} → {displayUser(h.to)}</span>
-                        <span style={{ fontSize: 12, color: C.textLight }}>{h.note}</span>
-                        <span style={{ fontSize: 12, color: C.textLight }}>{displayDate(h.date)}</span>
+                        <span style={{ fontSize: 13, color: "#475569", whiteSpace: "nowrap", flexShrink: 0 }}>{displayUser(h.from)} → {displayUser(h.to)}</span>
+                        <span style={{ fontSize: 12, color: C.textLight, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{h.note}</span>
+                        <span style={{ fontSize: 12, color: C.textLight, whiteSpace: "nowrap", flexShrink: 0 }}>{displayDate(h.date)}</span>
                       </div>
                     ))
                     : <p style={{ margin: 0, fontSize: 13, color: "#CBD5E1" }}>이력 없음</p>}
@@ -924,12 +965,16 @@ export default function AssetPage({ assets, setAssets, history, members, permiss
                 {/* admin/manager: 수정/삭제 버튼 */}
                 {permission !== "viewer" && (
                   <>
-                    <Btn variant="danger" onClick={deleteAsset}>삭제</Btn>
+                    <Btn variant="danger" onClick={() => setDisposeOpen(true)}>폐기</Btn>
                     <Btn onClick={() => {
                       setEditForm({
                         ...selected,
                         purchaseDate: selected.purchaseDate && selected.purchaseDate !== "-"
                           ? selected.purchaseDate.slice(0, 10) : "",
+                        repairVendor: "",
+                        repairCost: "",
+                        repairDetail: "",
+                        repairExpectedDate: "",
                       });
                       setEditMode(true);
                     }}>수정</Btn>
@@ -938,6 +983,39 @@ export default function AssetPage({ assets, setAssets, history, members, permiss
               </div>
             </div>
           )}
+        </Modal>
+      )}
+
+      {/* 폐기 처리 모달 */}
+      {disposeOpen && selected && (
+        <Modal title={`자산 폐기 — ${selected.name}`} onClose={() => { setDisposeOpen(false); setDisposeForm({ reason: "", method: "폐기" }); }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            <div style={{ background: C.dangerBg, borderRadius: 8, padding: "10px 14px", fontSize: 13, color: "#991B1B" }}>
+              ⚠️ 폐기 처리된 자산은 목록에서 제외됩니다. 이력은 영구 보존됩니다.
+            </div>
+            <SelectField
+              label="폐기 방법"
+              value={disposeForm.method}
+              onChange={v => setDisposeForm({ ...disposeForm, method: v })}
+              options={["폐기", "매각", "기증", "분실처리"]}
+            />
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <label style={{ fontSize: 12, color: C.textMuted, fontWeight: 600 }}>폐기 사유 *</label>
+              <textarea
+                value={disposeForm.reason}
+                onChange={e => setDisposeForm({ ...disposeForm, reason: e.target.value })}
+                rows={3}
+                placeholder="폐기 사유를 입력해 주세요"
+                style={{ border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 12px", fontSize: 14, color: C.text, outline: "none", resize: "vertical", fontFamily: "inherit" }}
+                onFocus={e => e.target.style.borderColor = C.danger}
+                onBlur={e => e.target.style.borderColor = C.border}
+              />
+            </div>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 8 }}>
+              <Btn variant="ghost" onClick={() => { setDisposeOpen(false); setDisposeForm({ reason: "", method: "폐기" }); }}>취소</Btn>
+              <Btn variant="danger" onClick={disposeAsset}>폐기 처리</Btn>
+            </div>
+          </div>
         </Modal>
       )}
     </main>
