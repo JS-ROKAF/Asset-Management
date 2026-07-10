@@ -311,10 +311,11 @@ src/
 **목적**: 서버(백엔드+프론트)를 매번 터미널 2개(`npm run dev` / `uvicorn`) 띄우지 않고, 바탕화면에서 더블클릭 한 번으로 실행. 사내 다른 프로젝트 "PTO"의 `tray_PTO.py` 패턴을 그대로 이식.
 
 **동작 방식**:
-- `backend/main.py`가 `dist/`(프론트 빌드 결과물) 존재 시 `/`에 정적서빙 마운트 → 백엔드 API + 프론트 화면이 **단일 포트**(기본 8001, 트레이 스크립트 상단 `PORT`로 변경 가능)로 통합 서빙됨
+- `backend/main.py`가 `dist/`(프론트 빌드 결과물) 존재 시 `/`에 정적서빙 마운트 → 백엔드 API + 프론트 화면이 **단일 포트**(트레이 스크립트 상단 `PORT`, 현재 **8011** — 사내 PTO 프로젝트가 8001을 이미 쓰고 있어 충돌 방지용으로 변경됨)로 통합 서빙됨
 - `tray_AssetHub.py` 실행 시: `dist/` 없으면 `npm run build` 1회 자동 실행 → `backend/`를 cwd로 uvicorn(`main:app`)을 무창(CREATE_NO_WINDOW) 백그라운드 프로세스로 기동 → 브라우저 자동 오픈 → 트레이 아이콘(초록/빨강, `/api/health` 10초 폴링) 표시
 - 우클릭 메뉴: 로컬 브라우저 열기 / 내부망 접속주소(LAN IP) 표시 / 종료(백엔드 프로세스까지 taskkill로 정리)
-- 실행: `c:\python314\python.exe tray_AssetHub.py` (전역 python314에 `pystray`, `Pillow` 설치되어 있어야 함, `backend/requirements.txt`에는 미포함 — 트레이 전용 의존성이라 별도)
+- 바탕화면 실행: `tray_AssetHub.bat` (PTO의 `tray.py`용 bat과 동일 패턴 — `start "" /b c:\python314\pythonw.exe "%~dp0tray_AssetHub.py"`, 콘솔창 없이 백그라운드 기동). 바탕화면 바로가기(`AssetHub.lnk`)가 이 bat을 가리킴
+- 직접 실행 시: `c:\python314\python.exe tray_AssetHub.py` (전역 python314에 `pystray`, `Pillow` 설치되어 있어야 함, `backend/requirements.txt`에는 미포함 — 트레이 전용 의존성이라 별도)
 
 **프론트 API_BASE 분기 (중요)**:
 - 프로덕션 빌드(`npm run build`, 트레이가 서빙하는 `dist/`)는 `src/api.js`의 `API_BASE` 기본값이 빈 문자열(`""`) → 페이지를 서빙 중인 origin(트레이가 띄운 포트)으로 **상대경로 fetch**. 트레이 스크립트의 `PORT`를 바꿔도 재빌드만 하면 자동으로 맞음
@@ -322,6 +323,10 @@ src/
 - **주의**: 트레이 `PORT`를 바꿨는데 `dist/`가 옛 설정으로 이미 빌드되어 있으면 `dist/` 폴더를 지우고(`rm -rf dist`) `npm run build` 재실행 필요 (트레이는 `dist/` 존재 시 재빌드 스킵하므로 자동으로 갱신되지 않음)
 
 **겪은 이슈 (2026-07-10)**: 트레이 `PORT`를 8001→8011로 변경 후 로그인 시 `Failed to fetch` 발생. 원인은 `dist/`가 옛 `VITE_API_BASE=http://localhost:8001` 하드코딩 상태로 빌드되어 있었기 때문(Vite 환경변수는 빌드 시점에 번들에 고정됨, 런타임 변경 불가). 위 "API_BASE 분기" 방식으로 근본 수정.
+
+**겪은 이슈 2 — 포트 점유 잔존 프로세스**: 개발/테스트 중 터미널에서 직접 띄운 `uvicorn main:app --port 8001` 프로세스가 정상 종료되지 않고 백그라운드에 잔존, PTO(포트 8001) 화면 대신 AssetHub 화면이 뜨는 혼선 발생. `netstat -ano | grep :8001`로 LISTENING PID 확인 → `wmic process where "ProcessId=<PID>" get CommandLine`으로 정체 확인 후 `taskkill /F /PID <PID>`로 정리. **교훈**: 터미널에서 백엔드 임시 기동 시 반드시 확실히 종료 확인할 것(bash 백그라운드 job의 `kill %1`이 실제 Windows 프로세스까지 못 죽이는 경우 있음).
+
+**admin 로그인 계정**: 이메일 `admin` (기존 테스트 계정 `admin@test.com`에서 변경, 비밀번호는 별도 관리 — 문서에 평문 기재하지 않음). 계정정보 변경은 `backend/seed_admin.py` 로직 참고해 `backend/auth.py`의 `hash_password`로 직접 UPDATE.
 
 ---
 
