@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import { api } from "../api";
 import {
   DEPARTMENTS,
   STATUS_OPTIONS,
@@ -953,12 +954,11 @@ export default function AssetPage({ assets, setAssets, history, members, permiss
                         resolvedNote: "-",
                         resolvedDate: "-",
                       };
-                      supabase.from("requests").insert(req).select().single().then(({ data, error }) => {
-                        if (error) { alert("요청 실패: " + error.message); return; }
+                      api.requests.create(req).then((data) => {
                         setRequests([data, ...requests]);
                         alert("반납 요청이 접수되었습니다.");
                         setSelected(null);
-                      });
+                      }).catch(e => alert("요청 실패: " + e.message));
                     }}>반납 요청</Btn>
                   </>
                 )}

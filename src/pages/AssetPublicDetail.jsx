@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
-import { supabase } from "../supabase";
-import LoginPage from "./LoginPage";
+import { api, getToken, setToken } from "../api";
 
 export default function AssetPublicDetail({ assetId }) {
   const [asset, setAsset] = useState(null);
@@ -15,15 +14,11 @@ export default function AssetPublicDetail({ assetId }) {
 
   // 1. 세션 확인
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setAuthChecked(true);
-    });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, session) => {
-      setSession(session);
-    });
-    return () => subscription.unsubscribe();
+    if (!getToken()) { setAuthChecked(true); return; }
+    api.me()
+      .then(member => setSession(member))
+      .catch(() => setSession(null))
+      .finally(() => setAuthChecked(true));
   }, []);
 
   // 2. 로그인 됐을 때만 자산 조회 + 진행중 실사 확인
@@ -31,19 +26,20 @@ export default function AssetPublicDetail({ assetId }) {
     if (!session) return;
 
     const load = async () => {
-      const { data: assetData, error: assetError } = await supabase
-        .from("assets").select("*").eq("id", assetId).single();
-      if (assetError || !assetData) { setNotFound(true); setLoading(false); return; }
+      let assetData;
+      try {
+        assetData = await api.assets.get(assetId);
+      } catch {
+        setNotFound(true); setLoading(false); return;
+      }
+      if (!assetData) { setNotFound(true); setLoading(false); return; }
       setAsset(assetData);
 
-      const { data: ins } = await supabase
-        .from("inspections").select("id").eq("status", "진행중").limit(1).maybeSingle();
+      const ins = await api.inspections.current().catch(() => null);
       if (ins) {
         setActiveInspectionId(ins.id);
-        const { data: item } = await supabase
-          .from("inspection_items")
-          .select("*").eq("inspectionId", ins.id).eq("assetId", assetId).maybeSingle();
-        if (item) setInspectionItem(item);
+        const items = await api.inspections.items({ inspectionId: ins.id, assetId }).catch(() => []);
+        if (items && items[0]) setInspectionItem(items[0]);
       }
       setLoading(false);
     };
@@ -54,9 +50,12 @@ export default function AssetPublicDetail({ assetId }) {
     if (!inspectionItem) return;
     setInspectionLoading(true);
     const kst = new Date().toLocaleString("sv-SE", { timeZone: "Asia/Seoul" });
-    const updated = { ...inspectionItem, status, confirmedBy: session.user.email, confirmedDate: kst };
-    const { error } = await supabase.from("inspection_items").update(updated).eq("id", inspectionItem.id);
-    if (error) { alert("확인 실패: " + error.message); setInspectionLoading(false); return; }
+    const updated = { ...inspectionItem, status, confirmedBy: session.email, confirmedDate: kst };
+    try {
+      await api.inspections.updateItem(inspectionItem.id, updated);
+    } catch (e) {
+      alert("확인 실패: " + e.message); setInspectionLoading(false); return;
+    }
     setInspectionItem(updated);
     setInspectionConfirmed(true);
     setInspectionLoading(false);
@@ -190,9 +189,15 @@ function LoginRedirect({ assetId, onLogin }) {
     e.preventDefault();
     setLoading(true);
     setError("");
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) { setError("이메일 또는 비밀번호가 올바르지 않습니다."); setLoading(false); return; }
-    onLogin(data.session);
+    try {
+      const data = await api.login(email, password);
+      setToken(data.token);
+      onLogin(data.member);
+    } catch {
+      setError("이메일 또는 비밀번호가 올바르지 않습니다.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (

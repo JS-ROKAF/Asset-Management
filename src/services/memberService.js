@@ -1,4 +1,4 @@
-import { supabase } from "../supabase";
+import { api } from "../api";
 
 export const updateMembers = async (prev, newMembers, setMembersState) => {
   setMembersState(newMembers);
@@ -10,26 +10,27 @@ export const updateMembers = async (prev, newMembers, setMembersState) => {
     return old && JSON.stringify(old) !== JSON.stringify(n);
   });
 
-  if (added.length) {
-    const { data, error } = await supabase.from("members").insert(added).select();
-    if (error) { setMembersState(prev); alert("구성원 등록 실패: " + error.message); return; }
-    setMembersState(current =>
-      current.map(m => {
-        const match = data.find(d => d.email === m.email);
-        return match ? match : m;
-      })
-    );
-  }
-  if (removed.length) {
-    const { error } = await supabase.from("members").delete().in("id", removed.map(r => r.id));
-    if (error) { setMembersState(prev); alert("구성원 삭제 실패: " + error.message); return; }
-  }
-  if (updated.length) {
-    const results = await Promise.all(
-      updated.map(u => supabase.from("members").update(u).eq("id", u.id))
-    );
-    const failed = results.find(r => r.error);
-    if (failed) { setMembersState(prev); alert("구성원 수정 실패: " + failed.error.message); return; }
+  try {
+    if (added.length) {
+      const withIds = added.map(m => ({ ...m, id: m.id || "M" + Date.now() + Math.random().toString(36).slice(2, 8) }));
+      const inserted = await api.members.bulkInsert(withIds);
+      setMembersState(current =>
+        current.map(m => {
+          const match = inserted.find(d => d.email === m.email);
+          return match ? match : m;
+        })
+      );
+    }
+    if (removed.length) {
+      await api.members.bulkDelete(removed.map(r => r.id));
+    }
+    if (updated.length) {
+      for (const u of updated) {
+        await api.members.update(u.id, u);
+      }
+    }
+  } catch (e) {
+    setMembersState(prev);
+    alert("구성원 저장 실패: " + e.message);
   }
 };
-

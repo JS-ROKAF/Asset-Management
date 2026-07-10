@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from "react";
-import { supabase } from "./supabase";
+import { getToken } from "./api";
 import { updateAssets } from "./services/assetService";
 import { updateMembers } from "./services/memberService";
-import { handleLogin, fetchAll } from "./services/authService";
+import { handleLogin, handleLogout, fetchAll, restoreSession } from "./services/authService";
 import { C, DEPARTMENTS } from "./constants";
 import Sidebar from "./components/layout/Sidebar";
 import Dashboard from "./pages/Dashboard";
@@ -29,13 +29,13 @@ export default function App() {
   const [focusAssetId, setFocusAssetId] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  const currentUser = members.find((m) => m.email === session?.user?.email) || null;
+  const currentUser = session;
   const permission = currentUser?.permission || "admin";
   const userDept = currentUser?.department || null;
 
   const handleLoginWrapper = (e) => {
     e.preventDefault();
-    handleLogin(email, password, setAuthLoading);
+    handleLogin(email, password, setAuthLoading, setSession);
   };
 
   const updateAssetsWrapper = (newAssets, histories = []) =>
@@ -56,19 +56,13 @@ export default function App() {
     );
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      if (session) fetchAllWrapper();
-      else setLoading(false);
-    });
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      if (session) fetchAllWrapper();
-    });
-    return () => subscription.unsubscribe();
+    if (!getToken()) { setLoading(false); return; }
+    restoreSession(setSession).then((ok) => { if (!ok) setLoading(false); });
   }, []);
+
+  useEffect(() => {
+    if (session) fetchAllWrapper();
+  }, [session]);
 
   const menuItems = [
     { key: "dashboard",   icon: "dashboard",   label: "대시보드" },
@@ -141,6 +135,7 @@ export default function App() {
         currentUser={currentUser}
         permission={permission}
         onRefresh={fetchAllWrapper}
+        onLogout={() => handleLogout(setSession)}
       />
 
       {/* ── 페이지 콘텐츠 ── */}

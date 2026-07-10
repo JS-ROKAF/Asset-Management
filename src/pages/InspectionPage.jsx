@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { supabase } from "../supabase";
+import { api } from "../api";
 
 import {
   Btn,
@@ -17,6 +17,7 @@ import {
 import { C } from "../constants";
 import { makeHistory } from "../utils/history";
 import { displayDate, toKST } from "../utils/date";
+import { displayUser } from "../utils/user";
 
 export default function InspectionPage({ inspections, setInspections, inspectionItems, setInspectionItems, assets, setAssets, members, permission, userDept, currentUser }) {
   const [createOpen, setCreateOpen] = useState(false);
@@ -38,8 +39,10 @@ export default function InspectionPage({ inspections, setInspections, inspection
       createdBy: currentUser?.name || "관리자",
       note: form.note || "-",
     };
-    const { data, error } = await supabase.from("inspections").insert(newInspection).select().single();
-    if (error) { alert("실사 생성 실패: " + error.message); return; }
+    let data;
+    try {
+      data = await api.inspections.create(newInspection);
+    } catch (e) { alert("실사 생성 실패: " + e.message); return; }
 
     // 전체 자산을 실사 항목으로 생성
     const items = assets.map(a => ({
@@ -53,10 +56,11 @@ export default function InspectionPage({ inspections, setInspections, inspection
       note: "-",
       confirmedDate: "-",
     }));
-    const { data: itemData, error: itemError } = await supabase
-      .from("inspection_items").insert(items).select(); 
-    if (itemError) { alert("실사 항목 생성 실패: " + itemError.message); return; }
-    setInspectionItems([...inspectionItems, ...itemData]); 
+    let itemData;
+    try {
+      itemData = await api.inspections.itemsBulkInsert(items);
+    } catch (e) { alert("실사 항목 생성 실패: " + e.message); return; }
+    setInspectionItems([...inspectionItems, ...itemData]);
 
     setInspections([data, ...inspections]);
     setCreateOpen(false);
@@ -72,8 +76,9 @@ export default function InspectionPage({ inspections, setInspections, inspection
       confirmedDate: toKST(),
       note: note || item.note,
     };
-    const { error } = await supabase.from("inspection_items").update(updated).eq("id", item.id);
-    if (error) { alert("확인 실패: " + error.message); return; }
+    try {
+      await api.inspections.updateItem(item.id, updated);
+    } catch (e) { alert("확인 실패: " + e.message); return; }
     setInspectionItems(inspectionItems.map(i => i.id === item.id ? updated : i));
   };
 
@@ -81,8 +86,9 @@ export default function InspectionPage({ inspections, setInspections, inspection
     if (!window.confirm("실사를 완료 처리할까요?\n'없음'으로 확인된 자산은 '미사용', '분실'로 확인된 자산은 '분실'로 자동 변경됩니다.")) return;
 
     const updated = { ...inspection, status: "완료" };
-    const { error } = await supabase.from("inspections").update(updated).eq("id", inspection.id);
-    if (error) { alert("완료 처리 실패: " + error.message); return; }
+    try {
+      await api.inspections.update(inspection.id, updated);
+    } catch (e) { alert("완료 처리 실패: " + e.message); return; }
 
     // 없음 → 미사용, 분실 → 분실 자동 반영
     const items = inspectionItems.filter(i => i.inspectionId === inspection.id);
@@ -179,9 +185,9 @@ export default function InspectionPage({ inspections, setInspections, inspection
                       <button onClick={async (e) => {
                         e.stopPropagation();
                         if (!window.confirm(`'${ins.title}' 실사를 삭제할까요?\n관련 실사 항목도 모두 삭제됩니다.`)) return;
-                        const { error } = await supabase.from("inspections").delete().eq("id", ins.id);
-                        if (error) { alert("삭제 실패: " + error.message); return; }
-                        await supabase.from("inspection_items").delete().eq("inspectionId", ins.id);
+                        try {
+                          await api.inspections.delete(ins.id);
+                        } catch (e) { alert("삭제 실패: " + e.message); return; }
                         setInspections(inspections.filter(i => i.id !== ins.id));
                         setInspectionItems(inspectionItems.filter(i => i.inspectionId !== ins.id));
                       }}

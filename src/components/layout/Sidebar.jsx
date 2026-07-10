@@ -1,5 +1,4 @@
 import React, { useState } from "react";
-import { supabase } from "../../supabase";
 import { C } from "../../constants";
 import Icon from "../common/Icon";
 // ⬇ 배경 제거된 투명 PNG 파일로 교체하세요
@@ -117,6 +116,7 @@ export default function Sidebar({
   currentUser,
   permission,
   onRefresh,
+  onLogout,
 }) {
   const [collapsed, setCollapsed] = useState(false);
 
@@ -258,7 +258,7 @@ export default function Sidebar({
             </div>
             {/* 로그아웃 아이콘 버튼 */}
             <button
-              onClick={() => supabase.auth.signOut()}
+              onClick={onLogout}
               title="로그아웃"
               aria-label="로그아웃"
               className="flex-shrink-0 w-7 h-7 rounded-md flex items-center justify-center transition-colors duration-150 hover:opacity-80 cursor-pointer"

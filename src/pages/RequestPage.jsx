@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { supabase } from "../supabase";
+import { api } from "../api";
 import { updateAssets } from "../services/assetService";
 
 import {
@@ -51,8 +51,9 @@ export default function RequestPage({ requests, setRequests, assets, setAssets, 
       resolvedDate: toKST(),
     };
 
-    const { error } = await supabase.from("requests").update(updatedReq).eq("id", selectedReq.id);
-    if (error) { alert("처리 실패: " + error.message); return; }
+    try {
+      await api.requests.update(selectedReq.id, updatedReq);
+    } catch (e) { alert("처리 실패: " + e.message); return; }
 
     if (approve && selectedReq.type === "반납요청") {
       const asset = assets.find(a => a.id === selectedReq.assetId);
@@ -134,9 +135,10 @@ export default function RequestPage({ requests, setRequests, assets, setAssets, 
             {permission === "admin" && (
               <button onClick={async () => {
                 if (!window.confirm("이 요청을 삭제할까요?")) return;
-                const { error } = await supabase.from("requests").delete().eq("id", r.id);
-                if (error) { alert("삭제 실패: " + error.message); return; }
-                setRequests(requests.filter(req => req.id !== r.id));
+                try {
+                  await api.requests.delete(r.id);
+                  setRequests(requests.filter(req => req.id !== r.id));
+                } catch (e) { alert("삭제 실패: " + e.message); }
               }}
                 style={{ background: C.dangerBg, color: C.danger, border: "none", padding: "4px 10px", borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
                 삭제
@@ -214,14 +216,13 @@ export default function RequestPage({ requests, setRequests, assets, setAssets, 
                   resolvedNote: "-",
                   resolvedDate: "-",
                 };
-                supabase.from("requests").insert(req).select().single().then(({ data, error }) => {
-                  if (error) { alert("요청 실패: " + error.message); return; }
-                  ssetRequests([data, ...requests]);
+                api.requests.create(req).then((data) => {
+                  setRequests([data, ...requests]);
                   alert("배정 요청이 접수되었습니다.");
                   setAssignReqOpen(false);
                   setAssignNote("");
                   setAssignTarget(null);
-                });
+                }).catch(e => alert("요청 실패: " + e.message));
               }}>요청</Btn>
             </div>
           </div>

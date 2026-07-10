@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { supabase } from "../supabase";
+import { api } from "../api";
 
 import {
   Btn,
@@ -137,9 +137,10 @@ export default function HistoryPage({ history, setHistory, permission, userDept,
                 <td style={{ padding: "10px 12px" }}>
                   <button onClick={async () => {
                     if (!window.confirm("이 이력을 삭제할까요?")) return;
-                    const { error } = await supabase.from("history").delete().eq("id", h.id);
-                    if (error) { alert("삭제 실패: " + error.message); return; }
-                    setHistory(history.filter(item => item.id !== h.id));
+                    try {
+                      await api.history.delete(h.id);
+                      setHistory(history.filter(item => item.id !== h.id));
+                    } catch (e) { alert("삭제 실패: " + e.message); }
                   }}
                     style={{ background: C.dangerBg, color: C.danger, border: "none", padding: "4px 10px", borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
                     삭제

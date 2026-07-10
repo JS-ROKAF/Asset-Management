@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import {
   PieChart, Pie, Cell, Tooltip,
   BarChart, Bar, XAxis, YAxis, ResponsiveContainer
@@ -28,33 +28,26 @@ import {
 } from "../constants";
 import { displayUser } from "../utils/user";
 import { displayDate } from "../utils/date";
-import { supabase } from "../supabase";
+import { api } from "../api";
 
-// ── Supabase 모니터링 훅 ──
-function useSupabaseMonitor(permission) {
+// ── 백엔드 모니터링 훅 ──
+function useBackendMonitor(permission) {
   const [connStatus, setConnStatus] = useState("확인중"); // "정상" | "불안정" | "끊김" | "확인중"
   const [latency, setLatency] = useState(null);           // ms
   const [lastSynced, setLastSynced] = useState(null);     // Date
-  const [realtimeStatus, setRealtimeStatus] = useState("연결중"); // "연결됨" | "끊김" | "연결중"
   const [tableCounts, setTableCounts] = useState(null);   // admin 전용
-  const [todayEvents, setTodayEvents] = useState(null);   // admin 전용
   const [latencyHistory, setLatencyHistory] = useState([]); // 최근 10회 응답속도
-  const channelRef = useRef(null);
 
   // ── 연결 상태 + 응답속도 체크 ──
   const checkConnection = async () => {
     const start = Date.now();
     try {
-      const { error } = await supabase.from("assets").select("id", { count: "exact", head: true });
+      await api.health();
       const ms = Date.now() - start;
-      if (error) {
-        setConnStatus("불안정");
-      } else {
-        setConnStatus("정상");
-        setLatency(ms);
-        setLastSynced(new Date());
-        setLatencyHistory(prev => [...prev.slice(-9), ms]);
-      }
+      setConnStatus("정상");
+      setLatency(ms);
+      setLastSynced(new Date());
+      setLatencyHistory(prev => [...prev.slice(-9), ms]);
     } catch {
       setConnStatus("끊김");
       setLatency(null);
@@ -63,67 +56,23 @@ function useSupabaseMonitor(permission) {
 
   // ── 테이블별 레코드 수 (admin 전용) ──
   const fetchTableCounts = async () => {
-    const tables = [
-      { key: "assets",          label: "자산" },
-      { key: "members",         label: "구성원" },
-      { key: "history",         label: "이력" },
-      { key: "requests",        label: "요청" },
-      { key: "inspections",     label: "정기실사" },
-    ];
-    const results = await Promise.all(
-      tables.map(async ({ key, label }) => {
-        const { count, error } = await supabase
-          .from(key)
-          .select("*", { count: "exact", head: true });
-        return { label, count: error ? "-" : count };
-      })
-    );
-    setTableCounts(results);
+    try {
+      const data = await api.tableCounts();
+      setTableCounts(Object.values(data));
+    } catch {
+      setTableCounts(null);
+    }
   };
-
-  // ── 오늘 이벤트 수 (admin 전용) ──
-  const fetchTodayEvents = async () => {
-    const todayStr = new Date().toISOString().slice(0, 10);
-    const { count, error } = await supabase
-      .from("history")
-      .select("*", { count: "exact", head: true })
-      .gte("date", todayStr);
-    setTodayEvents(error ? "-" : count);
-  };
-
-  // ── Realtime 구독 상태 체크 ──
-  useEffect(() => {
-    const channel = supabase.channel("monitor-ping");
-    channelRef.current = channel;
-
-    channel
-      .on("system", { event: "reconnect" }, () => setRealtimeStatus("연결됨"))
-      .subscribe((status) => {
-        if (status === "SUBSCRIBED") setRealtimeStatus("연결됨");
-        else if (status === "CLOSED" || status === "CHANNEL_ERROR") setRealtimeStatus("끊김");
-        else setRealtimeStatus("연결중");
-      });
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, []);
 
   // ── 최초 + 주기적 체크 ──
   useEffect(() => {
     checkConnection();
-    if (permission === "admin") {
-      fetchTableCounts();
-      fetchTodayEvents();
-    }
+    if (permission === "admin") fetchTableCounts();
 
     // 30초마다 갱신
     const interval = setInterval(() => {
       checkConnection();
-      if (permission === "admin") {
-        fetchTableCounts();
-        fetchTodayEvents();
-      }
+      if (permission === "admin") fetchTableCounts();
     }, 30000);
 
     return () => clearInterval(interval);
@@ -133,16 +82,11 @@ function useSupabaseMonitor(permission) {
     connStatus,
     latency,
     lastSynced,
-    realtimeStatus,
     tableCounts,
-    todayEvents,
     latencyHistory,
     refresh: () => {
       checkConnection();
-      if (permission === "admin") {
-        fetchTableCounts();
-        fetchTodayEvents();
-      }
+      if (permission === "admin") fetchTableCounts();
     },
   };
 }
@@ -194,22 +138,20 @@ function LatencySparkline({ data }) {
   );
 }
 
-// ── Supabase 모니터링 섹션 컴포넌트 ──
-function SupabaseMonitor({ permission, history }) {
+// ── 백엔드 모니터링 섹션 컴포넌트 ──
+function BackendMonitor({ permission, history }) {
   const {
     connStatus,
     latency,
     lastSynced,
-    realtimeStatus,
     tableCounts,
-    todayEvents,
     latencyHistory,
     refresh,
-  } = useSupabaseMonitor(permission);
+  } = useBackendMonitor(permission);
 
   const isAdmin = permission === "admin";
 
-  // 오늘 이력 건수 (history prop에서 직접 계산 — 공통)
+  // 오늘 이력 건수 (history prop에서 직접 계산)
   const todayStr = new Date().toISOString().slice(0, 10);
   const todayHistoryCount = history.filter(h =>
     h.date && h.date.slice(0, 10) === todayStr
@@ -222,7 +164,7 @@ function SupabaseMonitor({ permission, history }) {
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <h3 style={{ margin: 0, fontSize: 13, fontWeight: 700, color: C.text }}>
-            Supabase 연동 현황
+            백엔드 연동 현황
           </h3>
           {/* 전체 상태 표시 */}
           <span style={{
@@ -247,7 +189,7 @@ function SupabaseMonitor({ permission, history }) {
       </div>
 
       {/* ── 공통 지표 (모든 권한) ── */}
-      <div style={{ display: "grid", gridTemplateColumns: isAdmin ? "repeat(4, 1fr)" : "repeat(3, 1fr)", gap: 10, marginBottom: isAdmin ? 14 : 0 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, marginBottom: isAdmin ? 14 : 0 }}>
         
         {/* DB 연결 상태 */}
         <div style={{ background: statusBg(connStatus), borderRadius: 10, padding: "10px 14px" }}>
@@ -276,44 +218,15 @@ function SupabaseMonitor({ permission, history }) {
           </div>
         </div>
 
-        {/* Realtime 구독 */}
-        <div style={{ background: statusBg(realtimeStatus), borderRadius: 10, padding: "10px 14px" }}>
-          <p style={{ margin: 0, fontSize: 10, color: C.textLight, fontWeight: 500 }}>실시간 구독</p>
-          <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 4 }}>
-            <div style={{
-              width: 8, height: 8, borderRadius: "50%",
-              background: statusColor(realtimeStatus),
-              boxShadow: realtimeStatus === "연결됨" ? `0 0 6px ${statusColor(realtimeStatus)}` : "none",
-            }} />
-            <span style={{ fontSize: 15, fontWeight: 700, color: statusColor(realtimeStatus) }}>
-              {realtimeStatus}
-            </span>
-          </div>
+        {/* 마지막 동기화 */}
+        <div style={{ background: "rgba(16,185,129,0.06)", borderRadius: 10, padding: "10px 14px" }}>
+          <p style={{ margin: 0, fontSize: 10, color: C.textLight, fontWeight: 500 }}>마지막 동기화</p>
+          <p style={{ margin: "4px 0 0", fontSize: 13, fontWeight: 700, color: "#10B981" }}>
+            {lastSynced
+              ? lastSynced.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })
+              : "-"}
+          </p>
         </div>
-
-        {/* 마지막 동기화 — admin에서는 4번째 칸 */}
-        {isAdmin && (
-          <div style={{ background: "rgba(16,185,129,0.06)", borderRadius: 10, padding: "10px 14px" }}>
-            <p style={{ margin: 0, fontSize: 10, color: C.textLight, fontWeight: 500 }}>마지막 동기화</p>
-            <p style={{ margin: "4px 0 0", fontSize: 13, fontWeight: 700, color: "#10B981" }}>
-              {lastSynced
-                ? lastSynced.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })
-                : "-"}
-            </p>
-          </div>
-        )}
-
-        {/* 마지막 동기화 — admin 아닐 때 3번째 자리에 표시 */}
-        {!isAdmin && (
-          <div style={{ background: "rgba(16,185,129,0.06)", borderRadius: 10, padding: "10px 14px" }}>
-            <p style={{ margin: 0, fontSize: 10, color: C.textLight, fontWeight: 500 }}>마지막 동기화</p>
-            <p style={{ margin: "4px 0 0", fontSize: 13, fontWeight: 700, color: "#10B981" }}>
-              {lastSynced
-                ? lastSynced.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })
-                : "-"}
-            </p>
-          </div>
-        )}
       </div>
 
       {/* ── admin 전용 상세 지표 ── */}
@@ -344,7 +257,7 @@ function SupabaseMonitor({ permission, history }) {
               <p style={{ margin: "0 0 6px", fontSize: 11, fontWeight: 700, color: C.text }}>오늘 발생 이벤트</p>
               <div style={{ display: "flex", alignItems: "baseline", gap: 4 }}>
                 <span style={{ fontSize: 24, fontWeight: 700, color: C.primary }}>
-                  {todayEvents !== null ? todayEvents : todayHistoryCount}
+                  {todayHistoryCount}
                 </span>
                 <span style={{ fontSize: 11, color: C.textMuted }}>건</span>
               </div>
@@ -591,7 +504,7 @@ export default function Dashboard({ assets, members, history, permission, userDe
               {recentHistory.map(h => (<div key={h.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 0", borderBottom: `1px solid ${C.bg}` }}><HistoryBadge type={h.type} /><span style={{ fontSize: 13, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{h.assetName}</span><span style={{ fontSize: 11, color: C.textLight }}>{displayDate(h.date)}</span></div>))}
             </div>
           </div>
-          <div style={{ flexShrink: 0 }}><SupabaseMonitor permission={permission} history={filteredHistory} /></div>
+          <div style={{ flexShrink: 0 }}><BackendMonitor permission={permission} history={filteredHistory} /></div>
         </div>
       </div>
     </main>
