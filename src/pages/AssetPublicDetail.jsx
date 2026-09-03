@@ -71,7 +71,7 @@ export default function AssetPublicDetail({ assetId }) {
 
   // 로그인 안 됐으면 로그인 페이지
   if (!session) {
-    return <LoginRedirect assetId={assetId} onLogin={setSession} />;
+    return <LoginRedirect onLogin={setSession} />;
   }
 
   if (loading) return (
@@ -99,7 +99,7 @@ export default function AssetPublicDetail({ assetId }) {
   const sc = statusColor[asset.status] || { bg: "#F1F5F9", text: "#64748B" };
 
   const rows = [
-    ["자산번호",  asset.id?.slice(0, 8)],
+    ["자산번호",  asset.id],
     ["모델명",    asset.model],
     ["시리얼",    asset.serial],
     ["유형",      asset.type],
@@ -179,7 +179,7 @@ export default function AssetPublicDetail({ assetId }) {
 }
 
 // 로그인 유도 컴포넌트
-function LoginRedirect({ assetId, onLogin }) {
+function LoginRedirect({ onLogin }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -231,7 +231,7 @@ const styles = {
     minHeight: "100vh", background: "#F8FAFC",
     display: "flex", alignItems: "flex-start", justifyContent: "center",
     padding: "40px 16px",
-    fontFamily: "'Pretendard', 'Apple SD Gothic Neo', sans-serif",
+    fontFamily: "'Pretendard Variable', 'Pretendard', 'Apple SD Gothic Neo', sans-serif",
   },
   card: {
     width: "100%", maxWidth: 420, background: "#fff",
@@ -249,7 +249,7 @@ const styles = {
   footer: { padding: "12px 24px", background: "#F8FAFC", textAlign: "right" },
   center: {
     display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-    height: "100vh", fontFamily: "'Pretendard', sans-serif", background: "#F8FAFC",
+    height: "100vh", fontFamily: "'Pretendard Variable', 'Pretendard', sans-serif", background: "#F8FAFC",
   },
   spinner: {
     width: 36, height: 36, border: "3px solid #E2E8F0",

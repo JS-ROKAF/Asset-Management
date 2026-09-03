@@ -121,7 +121,7 @@ export default function App() {
       style={{
         display: "flex",
         height: "100vh",
-        fontFamily: "'Pretendard', 'Apple SD Gothic Neo', sans-serif",
+        fontFamily: "'Pretendard Variable', 'Pretendard', 'Apple SD Gothic Neo', sans-serif",
         background: C.bg,
       }}
     >

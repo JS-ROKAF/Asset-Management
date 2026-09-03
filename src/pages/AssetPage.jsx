@@ -23,7 +23,7 @@ import {
   HistoryBadge,
   Pagination
 } from "../components/common";
-import { SortableTable } from "../components";
+import SortableTable from "../components/SortableTable";
 import * as XLSX from "xlsx";
 import { QRCodeSVG } from "qrcode.react";
 
@@ -147,7 +147,7 @@ export default function AssetPage({ assets, setAssets, history, members, permiss
         setImportData(parsed);
         setImportGuideOpen(false);
         setImportOpen(true);
-      } catch (err) {
+      } catch {
         setImportError("파일을 읽는 중 오류가 발생했습니다.");
       }
     };
@@ -318,7 +318,7 @@ export default function AssetPage({ assets, setAssets, history, members, permiss
     const disposed = {
       ...selected,
       isDisposed: true,
-      status: "미사용",
+      // status는 폐기 시점 상태(분실·수리중 등)를 감사용으로 보존 — 목록 제외는 isDisposed가 담당
       user: "-",
       disposalReason: disposeForm.reason,
       disposalMethod: disposeForm.method,
@@ -445,7 +445,7 @@ export default function AssetPage({ assets, setAssets, history, members, permiss
             maxWidth: 100,
             overflow: "hidden",
             textOverflow: "ellipsis",
-            whiteSpace: "nowrap", padding: "10px 12px", fontSize: 13, color: C.textMuted, whiteSpace: "nowrap" }}
+            whiteSpace: "nowrap", padding: "10px 12px", fontSize: 13, color: C.textMuted }}
             onClick={() => { setSelected(a); setEditMode(false); }}>{a.id}</td>
           <td style={{ padding: "10px 12px", fontSize: 14, color: C.text, fontWeight: 500, whiteSpace: "nowrap" }}
             onClick={() => { setSelected(a); setEditMode(false); }}>{a.name}</td>
@@ -896,11 +896,11 @@ export default function AssetPage({ assets, setAssets, history, members, permiss
                       onClick={e => e.stopPropagation()}
                     >
                       <QRCodeSVG
-                        value={`https://assetmanagement-seven.vercel.app/#/assets/${selected.id}`}
+                        value={`${window.location.origin}/#/assets/${selected.id}`}
                         size={200}
                       />
                       <p style={{ margin: 0, fontWeight: 700, fontSize: 16, color: "#0F172A" }}>{selected.name}</p>
-                      <p style={{ margin: 0, fontSize: 12, color: "#64748B" }}>자산번호: {selected.id.slice(0, 8)}</p>
+                      <p style={{ margin: 0, fontSize: 12, color: "#64748B" }}>자산번호: {selected.id}</p>
                       <p style={{ margin: 0, fontSize: 12, color: "#64748B" }}>{selected.type || "기타"} · {selected.department || "-"}</p>
                       <p style={{ margin: 0, fontSize: 12, color: "#64748B" }}>위치: {selected.location || "-"}</p>
                       <button

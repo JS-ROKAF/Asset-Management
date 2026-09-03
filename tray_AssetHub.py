@@ -20,6 +20,10 @@ BACKEND_DIR = BASE_DIR / "backend"
 DIST_DIR    = BASE_DIR / "dist"
 PYTHON      = r"c:\python314\python.exe"
 PORT        = 8011
+# 사내망 고정 IP에만 바인딩 — 0.0.0.0(전체 인터페이스)이나 도메인 접속은 쓰지 않는다.
+# 이 PC의 IP가 바뀌면 서버가 기동되지 않으므로, 그때는 이 값을 새 IP로 고쳐야 한다.
+HOST        = "192.168.0.189"
+BASE_URL    = f"http://{HOST}:{PORT}"
 
 # 실행 중인 프로세스
 procs = {}
@@ -65,7 +69,7 @@ def start_servers():
 sys.path.insert(0, r"{BACKEND_DIR}")
 asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 import uvicorn
-uvicorn.run("main:app", host="0.0.0.0", port={PORT}, log_level="warning")
+uvicorn.run("main:app", host="{HOST}", port={PORT}, log_level="warning")
 ''')
 
     procs["backend"] = subprocess.Popen(
@@ -96,27 +100,14 @@ def stop_servers():
 
 
 def open_browser(icon=None, item=None):
-    webbrowser.open(f"http://localhost:{PORT}")
-
-
-def get_lan_ip() -> str:
-    """사내망 접속용 자기 LAN IP 조회"""
-    import socket
-    try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.connect(("192.168.0.1", 80))
-        ip = s.getsockname()[0]
-        s.close()
-        return ip
-    except Exception:
-        return "localhost"
+    webbrowser.open(BASE_URL)
 
 
 def check_status():
     """서버 상태 확인 (백엔드 응답 여부)"""
     try:
         import urllib.request, urllib.error
-        urllib.request.urlopen(f"http://localhost:{PORT}/api/health", timeout=2)
+        urllib.request.urlopen(f"{BASE_URL}/api/health", timeout=2)
         return True
     except urllib.error.HTTPError as e:
         return e.code in (401, 403)  # 서버 정상, 인증 필요 응답
@@ -137,17 +128,16 @@ def setup_tray():
     start_servers()
     time.sleep(4)  # 서버 기동 대기
 
-    webbrowser.open(f"http://localhost:{PORT}")
+    webbrowser.open(BASE_URL)
 
     ok = check_status()
     icon_img = make_icon("green" if ok else "red")
 
-    lan_ip = get_lan_ip()
     menu = pystray.Menu(
         pystray.MenuItem("AssetHub", None, enabled=False),
         pystray.Menu.SEPARATOR,
-        pystray.MenuItem("로컬 브라우저 열기", open_browser),
-        pystray.MenuItem(f"내부망 접속주소: {lan_ip}:{PORT}", None, enabled=False),
+        pystray.MenuItem("브라우저 열기", open_browser),
+        pystray.MenuItem(f"접속주소: {HOST}:{PORT}", None, enabled=False),
         pystray.Menu.SEPARATOR,
         pystray.MenuItem("종료", quit_app),
     )
@@ -166,7 +156,7 @@ def setup_tray():
                 ok = check_status()
                 icon.icon  = make_icon("green" if ok else "red")
                 if ok:
-                    icon.title = f"AssetHub 실행 중\n내부망: {lan_ip}:{PORT}"
+                    icon.title = f"AssetHub 실행 중\n{HOST}:{PORT}"
                 else:
                     icon.title = "AssetHub - 연결 오류"
             except Exception:

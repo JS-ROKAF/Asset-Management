@@ -74,7 +74,7 @@ const styles = {
     width: "100%",
     height: "100vh",
     overflow: "hidden",
-    fontFamily: "'Pretendard', sans-serif",
+    fontFamily: "'Pretendard Variable', 'Pretendard', sans-serif",
   },
 
   bg: {

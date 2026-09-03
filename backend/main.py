@@ -13,8 +13,10 @@ from routers import (
 
 app = FastAPI(title="AssetHub API")
 
+# 사내망 고정 IP만 허용. 트레이 운영 시에는 화면·API가 같은 origin이라 CORS를 타지 않고,
+# 개발서버(npm run dev, 5173)에서만 필요하다. 외부 도메인은 허용하지 않는다.
 ALLOWED_ORIGINS = os.environ.get(
-    "ALLOWED_ORIGINS", "http://localhost:5173,http://localhost:4173"
+    "ALLOWED_ORIGINS", "http://192.168.0.189:8011,http://192.168.0.189:5173"
 ).split(",")
 
 app.add_middleware(

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useRef } from "react";
 import * as XLSX from "xlsx";
 import {
   Btn,
@@ -13,19 +13,22 @@ import {
   StatusBadge,
   HistoryBadge
 } from "../components/common";
+import { api } from "../api";
 import { ROLES, DEPARTMENTS, C } from "../constants";
 import { makeHistory } from "../utils/history";
-import { displayDate, displayAge, toKST } from "../utils/date";
+import { displayDate } from "../utils/date";
 import { displayUser } from "../utils/user";
-import useSort from "../hooks/useSort";
-import { SortableTable } from "../components";
+import SortableTable from "../components/SortableTable";
 
 // ── 구성원 관리 ──
 export default function MemberPage({ members, setMembers, assets, setAssets, history, permission, userDept }) {
   const visibleMembers = (permission === "admin" ? members : members.filter(m => m.department === userDept))
   .filter(m => m.status !== "퇴직");
+  // 폐기 자산은 배정 현황에서 제외 (setAssets에는 전체 assets를 그대로 넘겨야 diff가 폐기분을 삭제하지 않음)
+  const activeAssets = assets.filter(a => !a.isDisposed);
   const [addOpen, setAddOpen] = useState(false);
   const [selected, setSelected] = useState(null);
+  const [issuedPassword, setIssuedPassword] = useState(null);
   const [editMode, setEditMode] = useState(false);
   const [form, setForm] = useState({ name: "", department: DEPARTMENTS[0], email: "", role: "사원" });
   const [editForm, setEditForm] = useState({});
@@ -48,8 +51,8 @@ export default function MemberPage({ members, setMembers, assets, setAssets, his
     if (sortBy === "name") return a.name.localeCompare(b.name, "ko");
     if (sortBy === "department") return a.department.localeCompare(b.department, "ko");
     if (sortBy === "assets") {
-      const aCount = assets.filter(asset => asset.user === a.name).length;
-      const bCount = assets.filter(asset => asset.user === b.name).length;
+      const aCount = activeAssets.filter(asset => asset.user === a.name).length;
+      const bCount = activeAssets.filter(asset => asset.user === b.name).length;
       return bCount - aCount;
     }
     return 0;
@@ -61,7 +64,7 @@ export default function MemberPage({ members, setMembers, assets, setAssets, his
       alert("이미 등록된 이메일입니다.");
       return;
     }
-    // id 없이 넘기면 Supabase가 UUID 자동 발급, App.jsx가 state 반영
+    // id 없이 넘기면 memberService가 발급, App.jsx가 state 반영
     setMembers([...members, { ...form }]);
     setAddOpen(false);
     setForm({ name: "", department: DEPARTMENTS[0], email: "", role: "사원" });
@@ -111,7 +114,7 @@ export default function MemberPage({ members, setMembers, assets, setAssets, his
         setMemberImportData(parsed);
         setMemberImportGuideOpen(false);
         setMemberImportOpen(true);
-      } catch (err) {
+      } catch {
         setMemberImportError("파일을 읽는 중 오류가 발생했습니다.");
       }
     };
@@ -169,7 +172,20 @@ export default function MemberPage({ members, setMembers, assets, setAssets, his
     setSelected(null);
   };
 
-  const memberAssets = (name) => assets.filter(a => a.user === name);
+  const memberAssets = (name) => activeAssets.filter(a => a.user === name);
+
+  // 임시 비밀번호 자동생성 — 혼동되는 글자(0/O, 1/l/I) 제외한 10자
+  const issueTempPassword = async () => {
+    if (!window.confirm(`'${selected.name}'의 임시 비밀번호를 발급할까요?\n기존 비밀번호는 즉시 무효화됩니다.`)) return;
+    const chars = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    const pw = Array.from(crypto.getRandomValues(new Uint32Array(10)), n => chars[n % chars.length]).join("");
+    try {
+      await api.members.resetPassword(selected.id, pw);
+      setIssuedPassword(pw);
+    } catch (e) {
+      alert("임시 비밀번호 발급 실패: " + e.message);
+    }
+  };
 
   return (
      <main style={{ flex: 1, padding: "36px 40px", overflowY: "auto" }}>
@@ -224,7 +240,7 @@ export default function MemberPage({ members, setMembers, assets, setAssets, his
         {sorted.map(m => {
           const myAssets = memberAssets(m.name);
           return (
-            <div key={m.id} onClick={() => { setSelected(m); setEditMode(false); }}
+            <div key={m.id} onClick={() => { setSelected(m); setEditMode(false); setIssuedPassword(null); }}
               style={{ background: C.card, borderRadius: 12, padding: 20, boxShadow: "0 1px 4px rgba(0,0,0,0.06)", cursor: "pointer", transition: "box-shadow 0.15s" }}
               onMouseEnter={e => e.currentTarget.style.boxShadow = "0 4px 16px rgba(0,0,0,0.10)"}
               onMouseLeave={e => e.currentTarget.style.boxShadow = "0 1px 4px rgba(0,0,0,0.06)"}>
@@ -267,7 +283,7 @@ export default function MemberPage({ members, setMembers, assets, setAssets, his
         const myAssets = memberAssets(m.name); 
         return (
           <tr key={m.id}
-            onClick={() => { setSelected(m); setEditMode(false); }}
+            onClick={() => { setSelected(m); setEditMode(false); setIssuedPassword(null); }}
             style={{ borderBottom: i < sorted.length - 1 ? `1px solid ${C.bg}` : "none", cursor: "pointer" }}
             onMouseEnter={e => e.currentTarget.style.background = "#F8FAFC"}
             onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
@@ -398,7 +414,7 @@ export default function MemberPage({ members, setMembers, assets, setAssets, his
       )}
 
       {selected && (
-        <Modal title={editMode ? "구성원 수정" : "구성원 상세"} onClose={() => setSelected(null)}>
+        <Modal title={editMode ? "구성원 수정" : "구성원 상세"} onClose={() => { setSelected(null); setIssuedPassword(null); }}>
           {editMode ? (
             <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
               <InputField label="이름" value={editForm.name} onChange={v => setEditForm({ ...editForm, name: v })} />
@@ -479,6 +495,34 @@ export default function MemberPage({ members, setMembers, assets, setAssets, his
                     : <p style={{ margin: 0, fontSize: 13, color: "#CBD5E1" }}>이력 없음</p>;
                 })()}
               </div>  
+
+              {permission === "admin" && (
+                <div style={{ background: "#FFFBEB", border: "1px solid #FDE68A", borderRadius: 10, padding: 16, marginBottom: 20 }}>
+                  <p style={{ margin: "0 0 10px", fontSize: 13, fontWeight: 600, color: "#92400E" }}>로그인 계정</p>
+                  {issuedPassword ? (
+                    <>
+                      <p style={{ margin: "0 0 6px", fontSize: 12, color: "#92400E" }}>
+                        임시 비밀번호가 발급됐습니다. 이 화면을 닫으면 다시 볼 수 없으니 본인에게 전달하세요.
+                      </p>
+                      <code style={{
+                        display: "block", background: "#fff", border: "1px solid #FDE68A", borderRadius: 6,
+                        padding: "10px 12px", fontSize: 16, fontWeight: 700, letterSpacing: 1, color: "#0F172A",
+                        userSelect: "all", marginBottom: 8,
+                      }}>{issuedPassword}</code>
+                      <p style={{ margin: 0, fontSize: 12, color: C.textLight }}>
+                        로그인 이메일: <strong>{selected.email}</strong>
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <p style={{ margin: "0 0 10px", fontSize: 12, color: C.textLight }}>
+                        임시 비밀번호를 발급하면 이 구성원이 로그인할 수 있습니다. 기존 비밀번호는 즉시 무효화됩니다.
+                      </p>
+                      <Btn variant="ghost" small onClick={issueTempPassword}>🔑 임시 비밀번호 발급</Btn>
+                    </>
+                  )}
+                </div>
+              )}
 
               <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
                 <Btn variant="danger" onClick={deleteMember}>퇴직 처리</Btn>

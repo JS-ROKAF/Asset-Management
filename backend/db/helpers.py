@@ -68,13 +68,3 @@ def delete_rows(table: str, ids: list) -> None:
     conn.execute(f"DELETE FROM {table} WHERE id IN ({placeholders})", ids)
     conn.commit()
     conn.close()
-
-
-def select_all(table: str, order_by: str | None = None, desc: bool = False) -> list[dict]:
-    conn = get_conn()
-    sql = f"SELECT * FROM {table}"
-    if order_by:
-        sql += f' ORDER BY {_quote(order_by)} {"DESC" if desc else "ASC"}'
-    rows = conn.execute(sql).fetchall()
-    conn.close()
-    return [dict(r) for r in rows]

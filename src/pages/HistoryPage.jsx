@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import { api } from "../api";
 
 import {
@@ -23,11 +23,10 @@ import {
   DEPARTMENTS,
   C
   } from "../constants";
-import { makeHistory } from "../utils/history";
-import { displayDate, displayAge, toKST } from "../utils/date";
+import { displayDate } from "../utils/date";
 import { displayUser } from "../utils/user";
 import useSort from "../hooks/useSort";
-import { SortableTable } from "../components";
+import SortableTable from "../components/SortableTable";
 
 export default function HistoryPage({ history, setHistory, permission, userDept, assets }) {
   // 부서장/뷰어면 자기 부서 자산의 이력만

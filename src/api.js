@@ -21,7 +21,9 @@ async function request(path, { method = "GET", body, auth = true } = {}) {
     try {
       const data = await res.json();
       if (data?.detail) message = data.detail;
-    } catch {}
+    } catch {
+      // 본문이 JSON이 아니면 기본 메시지 유지
+    }
     const err = new Error(message);
     err.status = res.status;
     throw err;

@@ -8,6 +8,8 @@ AssetHub는 회사 내 유·무형 자산을 체계적으로 관리하기 위해
 
 별도 설치 없이 웹 브라우저에서 접속하며, 로컬 SQLite DB + 자체 FastAPI 백엔드와 연동되어 데이터가 저장·동기화됩니다. (2026-07-10 Supabase → SQLite/FastAPI 전환, 상세는 [DB / 아키텍처 전환 이력](#db--아키텍처-전환-이력) 참고)
 
+**접속 주소는 사내망 고정 IP `192.168.0.189:8011` 하나뿐입니다.** 도메인 접속·외부 공개는 지원하지 않으며, `localhost`로도 접속되지 않습니다. 상세는 [외부 접속 정책](#외부-접속-정책--사내망-전용) 참고.
+
 ---
 
 ## 주요 기능
@@ -47,7 +49,7 @@ AssetHub는 회사 내 유·무형 자산을 체계적으로 관리하기 위해
 - 사용자 변경, 상태 변경, 정보 수정
 - 상태를 미사용·수리중·분실로 변경 시 사용자 자동 초기화 및 반납 이력 자동 생성
 - QR 코드 출력: 자산번호 기반 `#/assets/{id}` 해시 URL을 QR로 생성. 스캔 시 `AssetPublicDetail` 페이지에서 자산 정보 카드 표시 (로그인 필요)
-- **폐기 처리**: 자산 삭제 대신 소프트딜리트 (`isDisposed: true`). 폐기방법(폐기/매각/기증/분실처리) + 폐기사유 입력 필수. 폐기 후 목록 제외, 이력 영구 보존
+- **폐기 처리**: 자산 삭제 대신 소프트딜리트 (`isDisposed: true`). 폐기방법(폐기/매각/기증/분실처리) + 폐기사유 입력 필수. 폐기 후 자산목록·대시보드 집계·엑셀 리포트·실사 대상·배정요청 대상에서 모두 제외, 이력 영구 보존. `status`는 폐기 시점 상태(분실·수리중 등)를 감사용으로 보존하며 목록 제외는 `isDisposed`가 담당
 
 **일괄 처리**
 - 여러 자산 선택 후 일괄 배정, 일괄 반납, 일괄 상태 변경
@@ -68,7 +70,14 @@ AssetHub는 회사 내 유·무형 자산을 체계적으로 관리하기 위해
 - 구성원 상세 화면에서 배정 자산 목록 및 자산 이력 확인
 - 퇴직 처리 시 배정 자산 자동 반납 및 이력 생성
 - 이름 변경 시 연관 자산의 사용자명 자동 업데이트
-- 시스템 권한 부여 (admin·manager·viewer)
+- 시스템 권한 부여 (admin·manager·viewer) — 구성원 **수정** 모달에서, admin만 가능
+
+**임시 비밀번호 발급** (admin 전용)
+- 구성원 상세 하단 「로그인 계정」 섹션 → `🔑 임시 비밀번호 발급`
+- `crypto.getRandomValues`로 10자 자동 생성. 혼동되는 글자(`0/O`, `1/l/I`) 제외
+- `POST /api/members/{id}/reset_password` 호출, 기존 비밀번호는 즉시 무효화
+- 발급된 비밀번호는 화면에 **1회만** 표시 (모달을 닫거나 다른 구성원을 선택하면 소거). 별도 저장·조회 경로 없음
+- 구성원 등록만으로는 `password_hash`가 비어 있어 로그인 불가 — 이 발급을 거쳐야 admin 외 계정이 로그인할 수 있고, 그래야 요청 관리·부서장 승인·현장 QR 실사가 동작한다
 
 ---
 
@@ -167,8 +176,10 @@ QR 코드 스캔 시 표시되는 자산 정보 카드 페이지입니다.
 | 차트 | Recharts |
 | 엑셀 | SheetJS (xlsx) |
 | QR 코드 | qrcode.react |
-| 라우팅 | hash-based 라우팅 (React Router 미사용, `main.jsx`에서 직접 처리) |
-| 접속 방법 | 웹 브라우저 |
+| 폰트 | Pretendard 가변폰트 — `pretendard` npm 패키지를 로컬 번들 (외부 CDN 미사용, [외부 접속 정책](#외부-접속-정책--사내망-전용) 참고) |
+| 라우팅 | hash-based 라우팅 (React Router 미사용, `main.jsx`에서 직접 처리. `hashchange` 리스너 있음) |
+| 접속 방법 | 웹 브라우저 — **사내망 고정 IP `192.168.0.189:8011` 전용** |
+| 렌더 스모크 | `npm run smoke` — SSR 렌더로 컴포넌트가 실제 DOM을 뱉는지 검증 (`smoke.jsx`) |
 
 ---
 
@@ -199,33 +210,33 @@ db/
 └── backups/                # backup_db.py 결과물 (git 미추적)
 
 tray_AssetHub.py            # 데스크탑 트레이 실행기 (PTO 프로젝트의 tray_PTO.py 패턴 이식)
+smoke.jsx                   # 렌더 스모크 테스트 (`npm run smoke`)
 
 src/
 ├── App.jsx               # 메인 앱 (세션 관리, 전역 상태, 페이지 전환)
 ├── main.jsx              # 진입점 (hash URL 기반 라우팅: #/assets/{id} → AssetPublicDetail)
 ├── api.js                 # 백엔드 fetch 클라이언트 (토큰 저장/주입, 엔드포인트별 함수 모음)
+├── index.css              # Tailwind + Pretendard 가변폰트 로컬 import
 ├── assets/               # 이미지·아이콘 등 정적 자원
 ├── components/
 │   ├── SortableTable.jsx
 │   ├── common/           # 공통 UI 컴포넌트
+│   │   ├── Badge.jsx     # StatusBadge·HistoryBadge·RequestBadge·RequestStatusBadge 통합
 │   │   ├── Btn.jsx
 │   │   ├── Field.jsx
-│   │   ├── HistoryBadge.jsx
 │   │   ├── Icon.jsx
 │   │   ├── InputField.jsx
 │   │   ├── Modal.jsx
 │   │   ├── PageHeader.jsx
 │   │   ├── Pagination.jsx
-│   │   ├── RequestBadge.jsx
-│   │   ├── RequestStatusBadge.jsx
 │   │   ├── SearchFilter.jsx
 │   │   ├── SelectField.jsx
-│   │   ├── StatusBadge.jsx
-│   │   └── SummaryCards.jsx
+│   │   ├── SummaryCards.jsx
+│   │   └── index.js      # 배럴 export
 │   └── layout/
 │       └── Sidebar.jsx
 ├── constants/
-│   └── index.js          # 전역 상수 (DEPARTMENTS, ASSET_STATUS, C 디자인 토큰 등)
+│   └── index.js          # 전역 상수 (DEPARTMENTS, STATUS_STYLES, C 디자인 토큰 등)
 ├── hooks/
 │   └── useSort.js
 ├── pages/
@@ -275,8 +286,9 @@ src/
 ## 주요 상수 (constants/index.js)
 
 - `DEPARTMENTS`: 경영지원사업부, SCM사업부, 뉴비즈니스사업부, CIST, GIST, 셀럭스, 기술연구소
-- `ASSET_STATUS`: 사용중 / 미사용 / 수리중 / 분실
+- `STATUS_OPTIONS`: 사용중 / 미사용 / 수리중 / 분실 (`ASSET_STATUS` 객체에서 파생, 내부 전용)
 - `ASSET_TYPES`: 노트북, 데스크탑, 모니터, 키보드/마우스, 프린터/복합기, TV, 네트워크 장비, 비품, 차량, 기타
+- `STATUS_COLORS`: 차트 점 색상 / `STATUS_STYLES`·`HISTORY_STYLES`·`REQUEST_STYLES`·`REQUEST_STATUS_STYLES`: `Badge.jsx`가 쓰는 배경·글자색 쌍
 - `C`: 전역 디자인 토큰 (primary `#3B82F6`, sidebar `#0F172A`, bg `#F1F5F9` 등)
 
 ---
@@ -311,22 +323,48 @@ src/
 **목적**: 서버(백엔드+프론트)를 매번 터미널 2개(`npm run dev` / `uvicorn`) 띄우지 않고, 바탕화면에서 더블클릭 한 번으로 실행. 사내 다른 프로젝트 "PTO"의 `tray_PTO.py` 패턴을 그대로 이식.
 
 **동작 방식**:
-- `backend/main.py`가 `dist/`(프론트 빌드 결과물) 존재 시 `/`에 정적서빙 마운트 → 백엔드 API + 프론트 화면이 **단일 포트**(트레이 스크립트 상단 `PORT`, 현재 **8011** — 사내 PTO 프로젝트가 8001을 이미 쓰고 있어 충돌 방지용으로 변경됨)로 통합 서빙됨
+- `backend/main.py`가 `dist/`(프론트 빌드 결과물) 존재 시 `/`에 정적서빙 마운트 → 백엔드 API + 프론트 화면이 **단일 주소**(트레이 스크립트 상단 `HOST`/`PORT`, 현재 **`192.168.0.189:8011`** — 포트는 사내 PTO 프로젝트가 8001을 이미 쓰고 있어 충돌 방지용으로 변경됨)로 통합 서빙됨
 - `tray_AssetHub.py` 실행 시: `dist/` 없으면 `npm run build` 1회 자동 실행 → `backend/`를 cwd로 uvicorn(`main:app`)을 무창(CREATE_NO_WINDOW) 백그라운드 프로세스로 기동 → 브라우저 자동 오픈 → 트레이 아이콘(초록/빨강, `/api/health` 10초 폴링) 표시
-- 우클릭 메뉴: 로컬 브라우저 열기 / 내부망 접속주소(LAN IP) 표시 / 종료(백엔드 프로세스까지 taskkill로 정리)
+- 우클릭 메뉴: 브라우저 열기 / 접속주소 표시 / 종료(백엔드 프로세스까지 taskkill로 정리)
 - 바탕화면 실행: `tray_AssetHub.bat` (PTO의 `tray.py`용 bat과 동일 패턴 — `start "" /b c:\python314\pythonw.exe "%~dp0tray_AssetHub.py"`, 콘솔창 없이 백그라운드 기동). 바탕화면 바로가기(`AssetHub.lnk`)가 이 bat을 가리킴
 - 직접 실행 시: `c:\python314\python.exe tray_AssetHub.py` (전역 python314에 `pystray`, `Pillow` 설치되어 있어야 함, `backend/requirements.txt`에는 미포함 — 트레이 전용 의존성이라 별도)
 
 **프론트 API_BASE 분기 (중요)**:
-- 프로덕션 빌드(`npm run build`, 트레이가 서빙하는 `dist/`)는 `src/api.js`의 `API_BASE` 기본값이 빈 문자열(`""`) → 페이지를 서빙 중인 origin(트레이가 띄운 포트)으로 **상대경로 fetch**. 트레이 스크립트의 `PORT`를 바꿔도 재빌드만 하면 자동으로 맞음
-- 개발서버(`npm run dev`, 포트 5173)만 `.env.development`의 `VITE_API_BASE=http://localhost:8001`로 백엔드 주소 고정
+- 프로덕션 빌드(`npm run build`, 트레이가 서빙하는 `dist/`)는 `src/api.js`의 `API_BASE` 기본값이 빈 문자열(`""`) → 페이지를 서빙 중인 origin으로 **상대경로 fetch**. 트레이 스크립트의 `HOST`/`PORT`를 바꿔도 재빌드만 하면 자동으로 맞음
+- 개발서버(`npm run dev`, 포트 5173)만 `.env.development`의 `VITE_API_BASE`로 백엔드 주소 고정
 - **주의**: 트레이 `PORT`를 바꿨는데 `dist/`가 옛 설정으로 이미 빌드되어 있으면 `dist/` 폴더를 지우고(`rm -rf dist`) `npm run build` 재실행 필요 (트레이는 `dist/` 존재 시 재빌드 스킵하므로 자동으로 갱신되지 않음)
 
 **겪은 이슈 (2026-07-10)**: 트레이 `PORT`를 8001→8011로 변경 후 로그인 시 `Failed to fetch` 발생. 원인은 `dist/`가 옛 `VITE_API_BASE=http://localhost:8001` 하드코딩 상태로 빌드되어 있었기 때문(Vite 환경변수는 빌드 시점에 번들에 고정됨, 런타임 변경 불가). 위 "API_BASE 분기" 방식으로 근본 수정.
 
 **겪은 이슈 2 — 포트 점유 잔존 프로세스**: 개발/테스트 중 터미널에서 직접 띄운 `uvicorn main:app --port 8001` 프로세스가 정상 종료되지 않고 백그라운드에 잔존, PTO(포트 8001) 화면 대신 AssetHub 화면이 뜨는 혼선 발생. `netstat -ano | grep :8001`로 LISTENING PID 확인 → `wmic process where "ProcessId=<PID>" get CommandLine`으로 정체 확인 후 `taskkill /F /PID <PID>`로 정리. **교훈**: 터미널에서 백엔드 임시 기동 시 반드시 확실히 종료 확인할 것(bash 백그라운드 job의 `kill %1`이 실제 Windows 프로세스까지 못 죽이는 경우 있음).
 
-**admin 로그인 계정**: 이메일 `admin` (기존 테스트 계정 `admin@test.com`에서 변경, 비밀번호는 별도 관리 — 문서에 평문 기재하지 않음). 계정정보 변경은 `backend/seed_admin.py` 로직 참고해 `backend/auth.py`의 `hash_password`로 직접 UPDATE.
+**admin 로그인 계정**: 이메일 `admin` (기존 테스트 계정 `admin@test.com`에서 변경, 비밀번호는 별도 관리 — 문서에 평문 기재하지 않음). 계정정보 변경은 `backend/seed_admin.py` 로직 참고해 `backend/auth.py`의 `hash_password`로 직접 UPDATE. admin 외 구성원 계정은 [임시 비밀번호 발급](#3-구성원-관리)으로 처리.
+
+---
+
+## 외부 접속 정책 — 사내망 전용
+
+**2026-09-03 결정**: 이 시스템은 사내망 고정 IP `192.168.0.189:8011`로만 접속한다. 도메인(DNS) 접속, 외부 공개, 인터넷 경유 접근은 지원하지 않는다.
+
+**적용 지점**
+
+| 위치 | 설정 |
+|------|------|
+| `tray_AssetHub.py` 상단 | `HOST = "192.168.0.189"`, `PORT = 8011`, `BASE_URL = f"http://{HOST}:{PORT}"` |
+| uvicorn 바인딩 | `host="{HOST}"` — 이전 `0.0.0.0`(전체 인터페이스)에서 변경 |
+| `backend/main.py` CORS | `ALLOWED_ORIGINS` 기본값이 해당 IP만 (`:8011`, 개발서버용 `:5173`) |
+| `.env.development` | `VITE_API_BASE=http://192.168.0.189:8011` |
+| QR 코드 (`AssetPage.jsx`) | `window.location.origin` 기반 — 접속한 주소를 그대로 따라감 |
+| 폰트 | `pretendard` npm 패키지 로컬 번들 — 외부 CDN 요청 제거 |
+
+**주의사항**
+
+- **`localhost:8011`로는 접속되지 않는다.** 지정 IP에만 바인딩되므로 이 PC에서도 `192.168.0.189:8011`을 써야 한다
+- **이 PC의 IP가 바뀌면 서버가 기동되지 않는다** (바인딩 실패). DHCP 환경이면 라우터에서 MAC 고정 할당을 걸어둘 것. IP가 바뀌었다면 `tray_AssetHub.py`의 `HOST` 한 줄만 고치고 트레이 재시작
+- 설정 변경 후에는 **트레이를 반드시 재시작**해야 적용된다 (기존 프로세스는 옛 바인딩 유지)
+- 프론트 자산(JS/CSS/폰트/이미지)과 API 요청 모두 자기 origin으로만 나간다. 외부 도메인 요청 0건 상태를 유지할 것 — 새 라이브러리를 CDN `<link>`/`<script>`로 넣지 말고 npm 의존성으로 번들할 것
+
+**과거 흔적 (제거 완료)**: QR 코드가 Supabase/Vercel 시절 배포 주소(`assetmanagement-seven.vercel.app`)를 하드코딩하고 있어, 라벨을 출력해 스캔하면 접속이 불가능했다. 2026-09-03 `window.location.origin` 기반으로 교체.
 
 ---
 
@@ -353,9 +391,28 @@ src/
 - QR 스캔 → 로그인 → 진행중 실사 자동 감지 → 보유중/없음/분실 버튼 노출
 - 확인 즉시 백엔드 API(`PATCH /api/inspections/items/{id}`)로 `inspection_items` 업데이트
 
-#### 버그 수정 (이 세션에서 발견·수정)
+#### 버그 수정 (2026-07-10 세션)
 - **`assetService.js`**: `updated` 블록에 history insert 없음 → 자산 수정 시 이력 DB 미저장 (기존 버그). 수정 완료
 - **이력 표시 레이아웃**: 긴 note(수리 메모)로 인한 from→to 컬럼 세로 쪼개짐 수정 (nowrap + ellipsis)
+
+---
+
+### 2026-09-03 — 방치 2개월 후 복구 + 생애주기 전수 검증
+
+**렌더 크래시 3건** (미완성 상태로 커밋되어 있었음 — 빌드는 통과하나 런타임에 터짐)
+- `SummaryCards.jsx`: `return` 누락 → 이걸 쓰는 6개 페이지 전부 렌더 실패. 로그인 직후 대시보드부터 터지던 상태
+- `RequestBadge`/`RequestStatusBadge`: `REQUEST_STYLES`/`REQUEST_STATUS_STYLES` 미정의 (import는 `C`만) + `RequestPage`에 import 자체가 없었음
+- `Dashboard.jsx`: `CustomTooltip`을 렌더 함수 내부에 정의 → 매 렌더 재생성
+
+**생애주기 결함 3건** (등록→배정→수리→요청승인→실사→폐기→퇴직반납 실측으로 발견)
+- **폐기 필터 누락**: `isDisposed` 필터가 `AssetPage.jsx` 한 곳에만 존재. 대시보드 집계·엑셀 리포트·실사 대상·구성원 배정현황에 폐기 자산이 계속 포함됐고, 폐기 시 `status`를 `"미사용"`으로 덮어써서 **배정요청 목록에까지 노출**됐음. 각 페이지에 `activeAssets`를 두어 표시·선택 지점만 필터
+  - ⚠️ `App.jsx`에서 필터해 내리면 안 됨. `MemberPage`/`RequestPage`/`InspectionPage`가 `setAssets(assets.map(...))`로 전체 배열을 되돌려주는 구조라, 필터된 배열을 받으면 `assetService`의 diff가 폐기 자산을 `removed`로 판정해 **DB에서 실제 삭제**함
+- **admin 외 로그인 불가**: 백엔드는 "관리자에게 임시 비밀번호 발급을 요청하세요"라 안내하는데 발급 UI가 없었음(`api.members.resetPassword` 호출처 0). → 임시 비밀번호 발급 기능 신설
+- **QR 죽은 주소**: Vercel 시절 주소 하드코딩 → `window.location.origin` 기반으로 교체
+
+**정리**: 배지 4개 파일 → `Badge.jsx` 1개 통합, 미사용 import/변수 20건 제거, `select_all()`·`components/index.js`·`structure.txt`·`start_Asset_mgmt.bat` 삭제, `file-saver` 의존성 제거(`XLSX.writeFile`로 대체). eslint 44건 → 7건(남은 건 전부 `set-state-in-effect` 계열)
+
+**검증 수단 추가**: `npm run smoke` — `return` 누락 같은 렌더 실패는 빌드가 잡지 못하므로 SSR 렌더로 확인
 
 ---
 

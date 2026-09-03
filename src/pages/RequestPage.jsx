@@ -1,6 +1,5 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState } from "react";
 import { api } from "../api";
-import { updateAssets } from "../services/assetService";
 
 import {
   Btn,
@@ -13,13 +12,17 @@ import {
   SummaryCards,
   SearchFilter,
   StatusBadge,
-  HistoryBadge
+  HistoryBadge,
+  RequestBadge,
+  RequestStatusBadge
 } from "../components/common";
 import { C } from "../constants";
 import { makeHistory } from "../utils/history";
 import { displayDate, toKST } from "../utils/date";
 
-export default function RequestPage({ requests, setRequests, assets, setAssets, setHistory, members, permission, userDept, currentUser }) {
+export default function RequestPage({ requests, setRequests, assets, setAssets, permission, userDept, currentUser }) {
+  // 폐기 자산은 요청 대상에서 제외 (setAssets에는 전체 assets를 그대로 넘겨야 함)
+  const activeAssets = assets.filter(a => !a.isDisposed);
   const [filterStatus, setFilterStatus] = useState("전체");
   const [resolveOpen, setResolveOpen] = useState(false);
   const [selectedReq, setSelectedReq] = useState(null);
@@ -39,8 +42,6 @@ export default function RequestPage({ requests, setRequests, assets, setAssets, 
   const filtered = visibleRequests.filter(r =>
     filterStatus === "전체" || r.status === filterStatus
   );
-
-  const pendingCount = visibleRequests.filter(r => r.status === "대기중").length;
 
   const handleResolve = async (approve) => {
     if (!selectedReq) return;
@@ -181,9 +182,9 @@ export default function RequestPage({ requests, setRequests, assets, setAssets, 
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
             <p style={{ margin: 0, fontSize: 13, color: C.textMuted }}>배정받을 자산을 선택하세요.</p>
             <div style={{ maxHeight: 240, overflowY: "auto", border: `1px solid ${C.border}`, borderRadius: 8 }}>
-              {assets.filter(a => a.status === "미사용").length === 0
+              {activeAssets.filter(a => a.status === "미사용").length === 0
                 ? <p style={{ padding: 20, textAlign: "center", fontSize: 13, color: C.textLight, margin: 0 }}>배정 가능한 자산이 없습니다</p>
-                : assets.filter(a => a.status === "미사용").map(a => (
+                : activeAssets.filter(a => a.status === "미사용").map(a => (
                   <div key={a.id} onClick={() => setAssignTarget(a)}
                     style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px",
                       borderBottom: `1px solid ${C.bg}`, cursor: "pointer",

@@ -1,5 +1,4 @@
 import * as XLSX from "xlsx";
-import { saveAs } from "file-saver";
 
 // 셀 스타일 헬퍼
 const headerStyle = (color = "1E40AF") => ({
@@ -326,7 +325,6 @@ export function exportToExcel(assets, members, history) {
   XLSX.utils.book_append_sheet(wb, buildHistorySheet(history), "📋 배정·반납 이력");
   XLSX.utils.book_append_sheet(wb, buildSummarySheet(assets, members), "📊 종합 요약");
 
-  const buf = XLSX.write(wb, { bookType: "xlsx", type: "array", cellStyles: true });
   const date = new Date().toISOString().slice(0, 10);
-  saveAs(new Blob([buf], { type: "application/octet-stream" }), `AssetHub_리포트_${date}.xlsx`);
+  XLSX.writeFile(wb, `AssetHub_리포트_${date}.xlsx`, { bookType: "xlsx", cellStyles: true });
 }

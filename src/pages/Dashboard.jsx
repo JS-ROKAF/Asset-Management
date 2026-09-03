@@ -26,7 +26,6 @@ import {
   DEPARTMENTS,
   C
 } from "../constants";
-import { displayUser } from "../utils/user";
 import { displayDate } from "../utils/date";
 import { api } from "../api";
 
@@ -288,10 +287,41 @@ function BackendMonitor({ permission, history }) {
   );
 }
 
-// ── 대시보드 ──
-export default function Dashboard({ assets, members, history, permission, userDept, onNavigate }) {
+// 차트 툴팁 — 컴포넌트 밖에 선언 (렌더마다 재생성되면 state 초기화)
+function CustomTooltip ({ active, payload, label }) {
+  if (!(active && payload && payload.length)) return null;
+  return (
+    <div style={{
+      backgroundColor: "rgba(255, 255, 255, 0.95)",
+      borderRadius: "10px",
+      padding: "12px 16px",
+      boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)",
+      backdropFilter: "blur(4px)",
+      border: "1px solid rgba(226, 232, 240, 0.8)"
+    }}>
+      <p style={{ margin: "0 0 6px", fontWeight: 700, fontSize: "12px", color: "#1e293b" }}>{label}</p>
+      <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+        {payload.map((entry, index) => (
+          <div key={index} style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <div style={{ width: "8px", height: "8px", borderRadius: "50%", backgroundColor: entry.color || entry.fill }} />
+            <span style={{ fontSize: "11px", color: "#64748b", fontWeight: 500 }}>{entry.name}:</span>
+            <span style={{ fontSize: "11px", color: "#0f172a", fontWeight: 700 }}>
+              {typeof entry.value === 'number' ? entry.value.toLocaleString() : entry.value}
+              {entry.unit || (entry.name.includes("금액") ? "원" : "개")}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
-  const filteredAssets = permission === "admin" ? assets : assets.filter(a => a.department === userDept);
+// ── 대시보드 ──
+export default function Dashboard({ assets, members, history, permission, userDept }) {
+
+  // 폐기 자산은 집계·차트·엑셀에서 제외 (이력은 HistoryPage에 그대로 남음)
+  const activeAssets = assets.filter(a => !a.isDisposed);
+  const filteredAssets = permission === "admin" ? activeAssets : activeAssets.filter(a => a.department === userDept);
   const filteredMembers = permission === "admin" ? members : members.filter(m => m.department === userDept);
   const filteredHistory = permission === "admin" ? history : history.filter(h =>
     filteredAssets.some(a => a.id === h.assetId)
@@ -348,36 +378,6 @@ export default function Dashboard({ assets, members, history, permission, userDe
   const recentHistory = filteredHistory
     .filter(h => ["배정", "반납", "입고"].includes(h.type))
     .slice(0, 10);
-
-  const CustomTooltip = ({ active, payload, label }) => {
-    if (active && payload && payload.length) {
-      return (
-        <div style={{ 
-          backgroundColor: "rgba(255, 255, 255, 0.95)", 
-          borderRadius: "10px", 
-          padding: "12px 16px", 
-          boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)",
-          backdropFilter: "blur(4px)",
-          border: "1px solid rgba(226, 232, 240, 0.8)"
-        }}>
-          <p style={{ margin: "0 0 6px", fontWeight: 700, fontSize: "12px", color: "#1e293b" }}>{label}</p>
-          <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-            {payload.map((entry, index) => (
-              <div key={index} style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                <div style={{ width: "8px", height: "8px", borderRadius: "50%", backgroundColor: entry.color || entry.fill }} />
-                <span style={{ fontSize: "11px", color: "#64748b", fontWeight: 500 }}>{entry.name}:</span>
-                <span style={{ fontSize: "11px", color: "#0f172a", fontWeight: 700 }}>
-                  {typeof entry.value === 'number' ? entry.value.toLocaleString() : entry.value}
-                  {entry.unit || (entry.name.includes("금액") ? "원" : "개")}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-      );
-    }
-    return null;
-  };
 
   return (
     <main style={{ 

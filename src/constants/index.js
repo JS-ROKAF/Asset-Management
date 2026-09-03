@@ -1,7 +1,7 @@
 export {
-  DEPARTMENTS, ASSET_STATUS, STATUS_OPTIONS, STATUS_COLORS,
+  DEPARTMENTS, STATUS_OPTIONS, STATUS_COLORS, STATUS_STYLES,
   HISTORY_TYPES, HISTORY_STYLES, ASSET_TYPES, ROLES,
-  REQUEST_TYPES, REQUEST_STYLES, REQUEST_STATUS_STYLES, C  // ← 두 개 추가
+  REQUEST_STYLES, REQUEST_STATUS_STYLES, C
 };
 
 const DEPARTMENTS = ["경영지원사업부", "SCM사업부", "뉴비즈니스사업부", "CIST", "GIST", "셀럭스", "기술연구소"];
@@ -13,6 +13,13 @@ const ASSET_STATUS = {
 };
 const STATUS_OPTIONS = Object.values(ASSET_STATUS);
 const STATUS_COLORS = { "사용중": "#10B981", "미사용": "#94A3B8", "수리중": "#EF4444", "분실": "#F97316" };
+// 배지용 배경/글자 색 쌍 (STATUS_COLORS는 차트 점 색상용)
+const STATUS_STYLES = {
+  "사용중": { background: "#D1FAE5", color: "#065F46" },
+  "미사용": { background: "#F1F5F9", color: "#64748B" },
+  "수리중": { background: "#FEE2E2", color: "#991B1B" },
+  "분실":   { background: "#FFF7ED", color: "#C2410C" },
+};
 const HISTORY_TYPES = ["전체", "배정", "반납", "입고", "상태변경", "폐기"];
 const HISTORY_STYLES = {
   "배정":    { background: "#DBEAFE", color: "#1D4ED8" },
@@ -38,7 +45,6 @@ const ROLES = [
   "연구원", "주임연구원", "선임연구원", "책임연구원", "수석연구원",
   "원장", "소장", "본부장", "전무", "부사장", "대표"
 ];
-const REQUEST_TYPES = ["반납요청", "배정요청"];
 const REQUEST_STYLES = {
   "반납요청": { background: "#FEF3C7", color: "#92400E" },
   "배정요청": { background: "#DBEAFE", color: "#1D4ED8" },

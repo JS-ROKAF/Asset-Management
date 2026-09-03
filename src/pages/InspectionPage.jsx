@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState } from "react";
 import { api } from "../api";
 
 import {
@@ -16,18 +16,15 @@ import {
 } from "../components/common";
 import { C } from "../constants";
 import { makeHistory } from "../utils/history";
-import { displayDate, toKST } from "../utils/date";
+import { toKST } from "../utils/date";
 import { displayUser } from "../utils/user";
 
-export default function InspectionPage({ inspections, setInspections, inspectionItems, setInspectionItems, assets, setAssets, members, permission, userDept, currentUser }) {
+export default function InspectionPage({ inspections, setInspections, inspectionItems, setInspectionItems, assets, setAssets, permission, userDept, currentUser }) {
   const [createOpen, setCreateOpen] = useState(false);
   const [selectedInspection, setSelectedInspection] = useState(null);
   const [form, setForm] = useState({ title: "", startDate: "", endDate: "", note: "" });
-
-  // admin: 전체, manager/viewer: 자기 부서 관련 실사만
-  const myItems = permission !== "admin"
-    ? inspectionItems.filter(item => item.department === userDept)
-    : inspectionItems;
+  // 폐기 자산은 실사 대상에서 제외 (setAssets에는 전체 assets를 그대로 넘겨야 함)
+  const activeAssets = assets.filter(a => !a.isDisposed);
 
   const createInspection = async () => {
     if (!form.title || !form.startDate) return;
@@ -44,8 +41,8 @@ export default function InspectionPage({ inspections, setInspections, inspection
       data = await api.inspections.create(newInspection);
     } catch (e) { alert("실사 생성 실패: " + e.message); return; }
 
-    // 전체 자산을 실사 항목으로 생성
-    const items = assets.map(a => ({
+    // 폐기 제외한 전체 자산을 실사 항목으로 생성
+    const items = activeAssets.map(a => ({
       inspectionId: data.id,
       assetId: a.id,
       assetName: a.name,
@@ -299,7 +296,7 @@ export default function InspectionPage({ inspections, setInspections, inspection
             </div>
             <InputField label="비고" value={form.note} onChange={v => setForm({ ...form, note: v })} placeholder="실사 관련 메모" />
             <div style={{ background: "#EFF6FF", borderRadius: 8, padding: "10px 14px", fontSize: 13, color: "#1D4ED8" }}>
-              ℹ️ 실사 생성 시 현재 등록된 전체 자산 {assets.length}개가 실사 항목으로 자동 등록됩니다.
+              ℹ️ 실사 생성 시 현재 등록된 전체 자산 {activeAssets.length}개가 실사 항목으로 자동 등록됩니다.
             </div>
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 8 }}>
               <Btn variant="ghost" onClick={() => setCreateOpen(false)}>취소</Btn>

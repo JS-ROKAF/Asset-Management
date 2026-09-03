@@ -42,3 +42,6 @@ _run_server.py
 
 # tokensave 로컬 코드 인덱스 캐시
 .tokensave/
+
+# 렌더 스모크 빌드 산출물
+.smokeout/
