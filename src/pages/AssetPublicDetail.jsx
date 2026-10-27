@@ -117,7 +117,7 @@ export default function AssetPublicDetail({ assetId }) {
 
 // 로그인 유도 컴포넌트
 function LoginRedirect({ onLogin }) {
-  const [employeeNo, setEmployeeNo] = useState("");
+  const [loginId, setLoginId] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -127,7 +127,7 @@ function LoginRedirect({ onLogin }) {
     setLoading(true);
     setError("");
     try {
-      const data = await api.login(employeeNo, password);
+      const data = await api.login(loginId, password);
       setToken(data.token);
       onLogin(data.member);
     } catch (err) {
@@ -145,8 +145,8 @@ function LoginRedirect({ onLogin }) {
         {error && <p style={{ color: "#DC2626", fontSize: 13, marginBottom: 12 }}>{error}</p>}
         <form onSubmit={handleLogin} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           <input
-            type="text" placeholder="사번" value={employeeNo} autoComplete="username"
-            onChange={e => setEmployeeNo(e.target.value)}
+            type="text" placeholder="아이디" value={loginId} autoComplete="username"
+            onChange={e => setLoginId(e.target.value)}
             style={styles.input}
           />
           <input

@@ -146,7 +146,7 @@ function buildMemberSheet(members, assets) {
   });
 
   // 헤더
-  const headers = ["사번", "이름", "부서", "이메일", "역할", "배정 자산 수", "배정 자산 목록"];
+  const headers = ["파트", "이름", "부서", "이메일", "직위", "배정 자산 수", "배정 자산 목록"];
   ["A","B","C","D","E","F","G"].forEach((c, i) => setCell(ws, `${c}7`, headers[i], headerStyle("1E3A8A")));
 
   // 부서별 그룹핑
@@ -166,8 +166,8 @@ function buildMemberSheet(members, assets) {
       lastDept = m.department;
     }
     const bg = i % 2 === 0 ? "FFFFFF" : "F8FAFC";
-    const myAssets = assets.filter(a => a.user === m.name);
-    setCell(ws, `A${row}`, m.id, cellStyle(bg));
+    const myAssets = assets.filter(a => a.memberId === m.id);
+    setCell(ws, `A${row}`, m.part || "", cellStyle(bg));
     setCell(ws, `B${row}`, m.name, cellStyle(bg));
     setCell(ws, `C${row}`, m.department, cellStyle(bg));
     setCell(ws, `D${row}`, m.email, cellStyle(bg));

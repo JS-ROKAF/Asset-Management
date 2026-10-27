@@ -7,11 +7,11 @@ from deps import MEMBER_PUBLIC, get_current_user
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
-BAD_LOGIN = "사번 또는 비밀번호가 올바르지 않습니다."
+BAD_LOGIN = "아이디 또는 비밀번호가 올바르지 않습니다."
 
 
 class LoginReq(BaseModel):
-    employeeNo: str
+    loginId: str
     password: str
 
 
@@ -19,8 +19,8 @@ class LoginReq(BaseModel):
 def login(req: LoginReq):
     with db() as conn:
         row = conn.execute(
-            f"SELECT {MEMBER_PUBLIC}, passwordHash FROM members WHERE employeeNo = ?",
-            (req.employeeNo.strip(),),
+            f"SELECT {MEMBER_PUBLIC}, passwordHash FROM members WHERE loginId = ?",   # 칸이 COLLATE NOCASE — 대소문자 무시
+            (req.loginId.strip(),),
         ).fetchone()
     if not row:
         raise HTTPException(401, BAD_LOGIN)

@@ -2,12 +2,12 @@
 import re
 from datetime import date, timedelta
 
-from asset_ops import STATUSES, create_asset
+from asset_ops import STATUSES, ambiguous_msg, create_asset, find_member, member_index
 
 COLUMNS = [
     "자산번호", "구자산번호", "법인코드", "유형코드", "자산명", "모델명", "시리얼", "제조년월",
     "CPU", "RAM", "저장장치", "OS", "취득일자", "취득금액", "구입처", "구매품의번호",
-    "보증만료일", "부서", "위치", "상태", "사용자(사번)", "지급일", "비고",
+    "보증만료일", "부서", "위치", "상태", "사용자(이름)", "지급일", "비고",
 ]
 TEXT_FIELDS = {
     "구자산번호": "legacyNo", "자산명": "name", "모델명": "model", "CPU": "cpu", "RAM": "ram",
@@ -35,7 +35,7 @@ def _serial(v) -> tuple[date, bool]:
 
 
 def _parse_text_date(s: str, allow_month: bool) -> str:
-    s = re.sub(r"[./]", "-", s)
+    s = re.sub(r"[./]", "-", s.rstrip("."))   # "2018.09." 처럼 끝에 점이 붙은 한국식 표기 허용
     m = re.fullmatch(r"(\d{4})-(\d{1,2})(?:-(\d{1,2}))?", s)
     if not m or (m.group(3) is None and not allow_month):
         raise CellError("YYYY-MM-DD 형식이어야 합니다." if not allow_month else "YYYY-MM 또는 YYYY-MM-DD 형식이어야 합니다.")
@@ -81,7 +81,7 @@ def to_cost(v) -> int | None:
         if v < 0 or not float(v).is_integer():
             raise CellError("0 이상의 정수여야 합니다.")
         return int(v)
-    s = re.sub(r"[,원₩\s]", "", _text(v))
+    s = re.sub(r"[,원₩\\\s]", "", _text(v))   # 한글 글꼴에서 역슬래시는 원화 기호로 보인다 ("\705,100")
     if not s:
         return None
     if not s.isdigit():
@@ -93,9 +93,8 @@ def plan(conn, rows: list[dict]) -> tuple[list[dict], list[dict]]:
     """(저장할 자산 목록, 오류 목록[행·칸·사유]). DB는 읽기만 한다"""
     corps = {r["code"]: dict(r) for r in conn.execute("SELECT * FROM corporations")}
     types = {r["code"]: dict(r) for r in conn.execute("SELECT * FROM asset_types")}
-    depts = {(r["corpCode"], r["name"]): dict(r) for r in conn.execute(
-        "SELECT d.*, c.code corpCode FROM departments d JOIN corporations c ON c.id = d.corporationId")}
-    members = {r["employeeNo"]: dict(r) for r in conn.execute("SELECT id, employeeNo, status FROM members")}
+    depts = {r["name"]: dict(r) for r in conn.execute("SELECT * FROM departments")}
+    members = member_index(conn, active_only=True)   # 퇴직자에게는 배정할 수 없으므로 재직자 중에서만 찾는다
     db_ids = {r[0] for r in conn.execute("SELECT id FROM assets")}
     db_serials = {r[0] for r in conn.execute("SELECT serial FROM assets WHERE serial IS NOT NULL")}
 
@@ -155,15 +154,13 @@ def plan(conn, rows: list[dict]) -> tuple[list[dict], list[dict]]:
         else:
             fields["serial"] = None
 
-        # 부서: "법인코드 | 부서명"(코드표 형식) 또는 부서명만(이 행의 법인 기준)
+        # 부서는 법인과 무관한 회사 공통 목록 (설계안 v2.1)
         dept_text = _text(row.get("부서"))
         fields["departmentId"] = None
         if dept_text:
-            dc, _, dn = dept_text.rpartition("|")
-            key = (dc.strip().upper(), dn.strip()) if dc else (corp_code, dept_text)
-            dept = depts.get(key)
+            dept = depts.get(dept_text)
             if not dept:
-                err("부서", f"없는 부서입니다: {dept_text}" + ("" if dc else f" ({corp_code} 법인 기준)"))
+                err("부서", f"없는 부서입니다: {dept_text}")
             elif not dept["active"]:
                 err("부서", f"사용하지 않는 부서입니다: {dept_text}")
             else:
@@ -175,19 +172,23 @@ def plan(conn, rows: list[dict]) -> tuple[list[dict], list[dict]]:
         elif status not in STATUSES:
             err("상태", f"허용값이 아닙니다: {status} (허용: {', '.join(STATUSES)})")
 
-        emp_no = _text(row.get("사용자(사번)"))
-        member = members.get(emp_no) if emp_no else None
-        if emp_no and not member:
-            err("사용자(사번)", f"구성원 목록에 없는 사번입니다: {emp_no}. 미확인·보관으로 넣고 이름은 비고에 적으세요.")
-        elif member and member["status"] != "재직":
-            err("사용자(사번)", f"퇴직한 구성원입니다: {emp_no}")
-        if status == "사용중" and not emp_no:
-            err("사용자(사번)", "사용중이면 사용자가 필요합니다.")
-        elif status in STATUSES and status != "사용중" and emp_no:
-            err("사용자(사번)", f"{status} 상태는 사용자가 없어야 합니다.")
+        who = _text(row.get("사용자(이름)"))
+        member = None
+        if who:
+            hits, with_dept = find_member(members, who)
+            if len(hits) == 1:
+                member = hits[0]
+            elif hits:
+                err("사용자(이름)", ambiguous_msg(hits, with_dept))
+            else:
+                err("사용자(이름)", f"재직 구성원 중에 없습니다: {who}. 미확인·보관으로 넣고 이름은 비고에 적으세요.")
+        if status == "사용중" and not who:
+            err("사용자(이름)", "사용중이면 사용자가 필요합니다.")
+        elif status in STATUSES and status != "사용중" and who:
+            err("사용자(이름)", f"{status} 상태는 사용자가 없어야 합니다.")
 
         issue_date = conv("지급일", to_date)
-        if issue_date and not emp_no:
+        if issue_date and not who:
             err("지급일", "사용자가 있을 때만 입력할 수 있습니다.")
 
         fields["manufacturedYm"] = conv("제조년월", to_month_or_date, True)

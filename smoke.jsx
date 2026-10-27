@@ -35,9 +35,9 @@ for (const [el, expected] of cases) {
 // 페이지 렌더: bootstrap 응답 모양(FK id) → enrich → 각 페이지
 const data = enrich({
   corporations: [{ id: 1, code: "DR", name: "두래", active: 1 }],
-  departments: [{ id: 1, corporationId: 1, name: "경영지원", active: 1 }],
+  departments: [{ id: 1, name: "경영", active: 1 }],
   assetTypes: [{ id: 1, code: "NB", name: "노트북", hasSpecs: 1, active: 1 }],
-  members: [{ id: 1, employeeNo: "1001", name: "홍길동", departmentId: 1, position: "대리", permission: "admin", status: "재직", email: null }],
+  members: [{ id: 1, name: "홍길동", departmentId: 1, part: "합성파트", position: "대리", permission: "admin", loginId: "hong", status: "재직", email: null }],
   assets: [
     { id: "DR-NB-0001", typeId: 1, corporationId: 1, departmentId: 1, memberId: 1, status: "사용중", name: "업무용", warrantyExpiry: "2020-01-01", purchaseDate: "2018-09", purchaseCost: 1000000, createdAt: "2026-11-01T09:00:00.000000", updatedAt: "x", isDisposed: 0 },
     { id: "DR-NB-0002", typeId: 1, corporationId: 1, departmentId: null, memberId: null, status: "미확인", createdAt: "2026-11-01T09:00:00.000000", updatedAt: "x", isDisposed: 0 },
@@ -62,12 +62,13 @@ const wb = XLSX.read(XLSX.write(memberTemplate(data), { type: "array", bookType:
 assert.deepEqual(wb.SheetNames, ["구성원목록", "코드표"]);
 const back = XLSX.utils.sheet_to_json(wb.Sheets["구성원목록"], { defval: "", raw: false }).filter(r => Object.values(r).some(v => v !== ""));
 assert.equal(back.length, 1);
-assert.match(back[0]["사번"], /^예시/);
-assert.equal(back[0]["부서"], "경영지원");
+assert.match(back[0]["이름"], /^예시/);
+assert.equal(back[0]["부서"], "경영");
 const awb = XLSX.read(XLSX.write(assetTemplate(data), { type: "array", bookType: "xlsx" }), { type: "array" });
 const aback = XLSX.utils.sheet_to_json(awb.Sheets["자산목록"], { defval: "", raw: true }).filter(r => Object.values(r).some(v => v !== ""));
 assert.equal(aback.length, 1);
 assert.equal(aback[0]["취득일자"], "2018-09");   // 텍스트 서식 — 날짜로 바뀌지 않음
-assert.equal(aback[0]["부서"], "DR | 경영지원");
+assert.equal(aback[0]["부서"], "경영");
+assert.equal(aback[0]["사용자(이름)"], "홍길동");
 
 console.log("OK — SummaryCards + 배지 4종 + 페이지 6개 렌더 + 구성원·자산 양식 왕복 정상");

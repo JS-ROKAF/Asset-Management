@@ -14,22 +14,25 @@ import {
 } from "../components/common";
 import { api } from "../api";
 import { memberTemplate } from "../utils/templates";
-import { ROLES, PERMISSION_LABELS, C } from "../constants";
+import { PERMISSION_LABELS, C } from "../constants";
 import { displayDate } from "../utils/date";
 import { displayUser } from "../utils/user";
 import SortableTable from "../components/SortableTable";
 
-const EMPTY_FORM = { employeeNo: "", name: "", departmentId: "", position: "사원", email: "" };
+const EMPTY_FORM = { name: "", departmentId: "", part: "", position: "", email: "" };
 const toPayload = (f) => ({
-  employeeNo: f.employeeNo.trim(),
   name: f.name.trim(),
   departmentId: f.departmentId ? Number(f.departmentId) : null,
-  position: f.position || null,
+  part: f.part.trim() || null,
+  position: f.position.trim() || null,
   email: f.email.trim() || null,
 });
+// 이름은 필수, "/"는 가져오기의 이름/부서 구분자라 쓸 수 없음 (서버도 검사)
+const nameError = (f) => !f.name.trim() ? "이름은 필수입니다." : f.name.includes("/") ? "이름에 '/'를 쓸 수 없습니다." : null;
+const LOGIN_ID = /^[A-Za-z0-9._-]{2,30}$/;
 
 // ── 구성원 관리 ──
-export default function MemberPage({ members, assets, history, corporations, departments, permission, userDept, save, refresh }) {
+export default function MemberPage({ members, assets, history, departments, permission, userDept, save, refresh }) {
   const visibleMembers = (permission === "admin" ? members : members.filter(m => m.departmentId === userDept))
     .filter(m => m.status !== "퇴직");
   const activeAssets = assets.filter(a => !a.isDisposed);
@@ -41,6 +44,7 @@ export default function MemberPage({ members, assets, history, corporations, dep
   const [form, setForm] = useState(EMPTY_FORM);
   const [editForm, setEditForm] = useState(EMPTY_FORM);
   const [editPermission, setEditPermission] = useState("");
+  const [editLoginId, setEditLoginId] = useState("");
   const [search, setSearch] = useState("");
   const [filterDept, setFilterDept] = useState("");
   const [sortBy, setSortBy] = useState("name");
@@ -48,17 +52,16 @@ export default function MemberPage({ members, assets, history, corporations, dep
   const [importOpen, setImportOpen] = useState(false);
 
   const deptOptions = [{ value: "", label: "미지정" },
-    ...departments.filter(d => d.active).map(d => ({ value: String(d.id), label: `${d.corporation} · ${d.name}` }))];
+    ...departments.filter(d => d.active).map(d => ({ value: String(d.id), label: d.name }))];
   const memberAssets = (id) => activeAssets.filter(a => a.memberId === id);
 
   const q = search.toLowerCase();
   const filtered = visibleMembers.filter(m =>
     (!filterDept || String(m.departmentId) === filterDept) &&
-    [m.name, m.employeeNo, m.email, m.role].some(v => v?.toLowerCase().includes(q))
+    [m.name, m.part, m.email, m.role].some(v => v?.toLowerCase().includes(q))
   );
   const sorted = [...filtered].sort((a, b) => {
     if (sortBy === "name") return a.name.localeCompare(b.name, "ko");
-    if (sortBy === "employeeNo") return a.employeeNo.localeCompare(b.employeeNo);
     if (sortBy === "department") return a.department.localeCompare(b.department, "ko");
     if (sortBy === "assets") return memberAssets(b.id).length - memberAssets(a.id).length;
     return 0;
@@ -67,7 +70,7 @@ export default function MemberPage({ members, assets, history, corporations, dep
   const open = (m) => { setSelectedId(m.id); setEditMode(false); setIssuedPassword(null); };
 
   const addMember = async () => {
-    if (!form.employeeNo.trim() || !form.name.trim()) return alert("사번과 이름은 필수입니다.");
+    if (nameError(form)) return alert(nameError(form));
     const ok = await save(() => api.members.create(toPayload(form)));
     if (!ok) return;
     setAddOpen(false);
@@ -76,15 +79,18 @@ export default function MemberPage({ members, assets, history, corporations, dep
 
   const startEdit = () => {
     setEditForm({
-      employeeNo: selected.employeeNo, name: selected.name, departmentId: selected.departmentId ? String(selected.departmentId) : "",
-      position: selected.position || "", email: selected.email || "",
+      name: selected.name, departmentId: selected.departmentId ? String(selected.departmentId) : "",
+      part: selected.part || "", position: selected.position || "", email: selected.email || "",
     });
     setEditPermission(selected.permission || "");
+    setEditLoginId(selected.loginId || "");
     setEditMode(true);
   };
 
   const saveMember = async () => {
-    if (!editForm.employeeNo.trim() || !editForm.name.trim()) return alert("사번과 이름은 필수입니다.");
+    if (nameError(editForm)) return alert(nameError(editForm));
+    const loginId = editLoginId.trim();
+    if (permission === "admin" && editPermission && !LOGIN_ID.test(loginId)) return alert("아이디는 영문·숫자·. _ - 로 2~30자입니다.");
     const payload = toPayload(editForm);
     const held = memberAssets(selected.id).length;
     // 부서가 바뀌고 보유 자산이 있으면 자산도 옮길지 확인 (설계안 3-6)
@@ -92,8 +98,8 @@ export default function MemberPage({ members, assets, history, corporations, dep
       window.confirm(`보유 자산 ${held}개도 새 부서로 이동할까요?\n[확인] 자산도 이동(이동 이력 생성) / [취소] 구성원 부서만 변경`);
     const ok = await save(async () => {
       await api.members.update(selected.id, payload, moveAssets);
-      if (permission === "admin" && editPermission !== (selected.permission || "")) {
-        await api.members.setPermission(selected.id, editPermission || null);
+      if (permission === "admin" && (editPermission !== (selected.permission || "") || (editPermission && loginId !== selected.loginId))) {
+        await api.members.setPermission(selected.id, editPermission || null, editPermission ? loginId : null);
       }
     });
     if (ok) setEditMode(false);
@@ -133,8 +139,8 @@ export default function MemberPage({ members, assets, history, corporations, dep
           </div>
         ) : null} />
       {importOpen && (
-        <ImportModal title="구성원 엑셀 가져오기 (사번 기준: 없으면 등록, 있으면 갱신)" templateName="구성원등록_양식.xlsx"
-          makeTemplate={() => memberTemplate({ corporations, departments })}
+        <ImportModal title="구성원 엑셀 가져오기 (이름 기준: 없으면 등록, 있으면 갱신)" templateName="구성원등록_양식.xlsx"
+          makeTemplate={() => memberTemplate({ departments })}
           run={api.members.import}
           summary={r => `신규 ${r.create} · 갱신 ${r.update} · 변경 없음 ${r.same}`}
           onClose={() => setImportOpen(false)}
@@ -166,12 +172,11 @@ export default function MemberPage({ members, assets, history, corporations, dep
           <select value={filterDept} onChange={e => setFilterDept(e.target.value)}
             style={{ border: `1px solid ${C.border}`, borderRadius: 8, padding: "7px 12px", fontSize: 13, color: C.textMuted, outline: "none", background: C.card, cursor: "pointer" }}>
             <option value="">부서 전체</option>
-            {departments.map(d => <option key={d.id} value={String(d.id)}>{d.corporation} · {d.name}</option>)}
+            {departments.map(d => <option key={d.id} value={String(d.id)}>{d.name}</option>)}
           </select>
           <select value={sortBy} onChange={e => setSortBy(e.target.value)}
             style={{ border: `1px solid ${C.border}`, borderRadius: 8, padding: "7px 12px", fontSize: 13, color: C.textMuted, outline: "none", background: C.card, cursor: "pointer" }}>
             <option value="name">이름순</option>
-            <option value="employeeNo">사번순</option>
             <option value="department">부서순</option>
             <option value="assets">보유 자산 많은 순</option>
           </select>
@@ -193,7 +198,7 @@ export default function MemberPage({ members, assets, history, corporations, dep
                   </div>
                   <div>
                     <p style={{ margin: 0, fontSize: 15, fontWeight: 700, color: C.text }}>{m.name}</p>
-                    <p style={{ margin: 0, fontSize: 12, color: C.textLight }}>{m.employeeNo} · {m.role}</p>
+                    <p style={{ margin: 0, fontSize: 12, color: C.textLight }}>{[m.part, m.role].filter(Boolean).join(" · ")}</p>
                   </div>
                   <span style={{ marginLeft: "auto" }}>{deptBadge(m)}</span>
                 </div>
@@ -211,10 +216,10 @@ export default function MemberPage({ members, assets, history, corporations, dep
       ) : (
         <SortableTable
           headers={[
-            { label: "사번", key: "employeeNo" },
             { label: "이름", key: "name" },
             { label: "부서", key: "department" },
-            { label: "직급", key: null },
+            { label: "파트", key: null },
+            { label: "직위", key: null },
             { label: "이메일", key: null },
             { label: "배정 자산", key: "assets" },
           ]}
@@ -230,7 +235,6 @@ export default function MemberPage({ members, assets, history, corporations, dep
                   style={{ borderBottom: i < sorted.length - 1 ? `1px solid ${C.bg}` : "none", cursor: "pointer" }}
                   onMouseEnter={e => e.currentTarget.style.background = "#F8FAFC"}
                   onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
-                  <td style={{ padding: "10px 12px", fontSize: 13, color: C.textMuted, whiteSpace: "nowrap" }}>{m.employeeNo}</td>
                   <td style={{ padding: "10px 12px" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                       <div style={{ width: 32, height: 32, borderRadius: "50%", background: "#EDE9FE", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, color: "#7C3AED", flexShrink: 0 }}>
@@ -240,6 +244,7 @@ export default function MemberPage({ members, assets, history, corporations, dep
                     </div>
                   </td>
                   <td style={{ padding: "10px 12px" }}>{deptBadge(m)}</td>
+                  <td style={{ padding: "10px 12px", fontSize: 13, color: C.textMuted }}>{m.part || "-"}</td>
                   <td style={{ padding: "10px 12px", fontSize: 13, color: C.textMuted }}>{m.role}</td>
                   <td style={{ padding: "10px 12px", fontSize: 13, color: C.textMuted }}>{m.email || "-"}</td>
                   <td style={{ padding: "10px 12px", maxWidth: 200 }}>
@@ -269,12 +274,12 @@ export default function MemberPage({ members, assets, history, corporations, dep
       {addOpen && (
         <Modal title="구성원 등록" onClose={() => setAddOpen(false)}>
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-              <InputField label="사번 *" value={form.employeeNo} onChange={v => setForm({ ...form, employeeNo: v })} />
-              <InputField label="이름 *" value={form.name} onChange={v => setForm({ ...form, name: v })} />
-            </div>
+            <InputField label="이름 *" value={form.name} onChange={v => setForm({ ...form, name: v })} />
             <SelectField label="부서" value={form.departmentId} onChange={v => setForm({ ...form, departmentId: v })} options={deptOptions} />
-            <SelectField label="직급" value={form.position} onChange={v => setForm({ ...form, position: v })} options={ROLES} />
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <InputField label="파트 (선택)" value={form.part} onChange={v => setForm({ ...form, part: v })} />
+              <InputField label="직위 (선택)" value={form.position} onChange={v => setForm({ ...form, position: v })} />
+            </div>
             <InputField label="이메일 (선택)" value={form.email} onChange={v => setForm({ ...form, email: v })} type="email" />
             <p style={{ margin: 0, fontSize: 12, color: C.textLight }}>시스템 권한은 등록 후 구성원 수정에서 admin이 부여합니다. 권한이 없으면 로그인할 수 없습니다.</p>
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 8 }}>
@@ -289,19 +294,22 @@ export default function MemberPage({ members, assets, history, corporations, dep
         <Modal title={editMode ? "구성원 수정" : "구성원 상세"} onClose={() => { setSelectedId(null); setIssuedPassword(null); }}>
           {editMode ? (
             <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                <InputField label="사번 *" value={editForm.employeeNo} onChange={v => setEditForm({ ...editForm, employeeNo: v })} />
-                <InputField label="이름 *" value={editForm.name} onChange={v => setEditForm({ ...editForm, name: v })} />
-              </div>
+              <InputField label="이름 *" value={editForm.name} onChange={v => setEditForm({ ...editForm, name: v })} />
               <SelectField label="부서" value={editForm.departmentId} onChange={v => setEditForm({ ...editForm, departmentId: v })} options={deptOptions} />
-              <SelectField label="직급" value={editForm.position} onChange={v => setEditForm({ ...editForm, position: v })} options={["", ...ROLES]} />
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                <InputField label="파트 (선택)" value={editForm.part} onChange={v => setEditForm({ ...editForm, part: v })} />
+                <InputField label="직위 (선택)" value={editForm.position} onChange={v => setEditForm({ ...editForm, position: v })} />
+              </div>
               <InputField label="이메일 (선택)" value={editForm.email} onChange={v => setEditForm({ ...editForm, email: v })} type="email" />
               {permission === "admin" && (
                 <SelectField label="시스템 권한" value={editPermission} onChange={setEditPermission}
                   options={Object.entries(PERMISSION_LABELS).map(([value, label]) => ({ value, label }))} />
               )}
+              {permission === "admin" && editPermission && (
+                <InputField label="로그인 아이디 * (영문·숫자·. _ -, 2~30자)" value={editLoginId} onChange={setEditLoginId} />
+              )}
               {permission === "admin" && editPermission === "" && selected.permission && (
-                <p style={{ margin: 0, fontSize: 12, color: C.danger }}>권한을 없애면 로그인할 수 없고 비밀번호도 초기화됩니다.</p>
+                <p style={{ margin: 0, fontSize: 12, color: C.danger }}>권한을 없애면 로그인할 수 없고 아이디·비밀번호도 지워집니다.</p>
               )}
               <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 8 }}>
                 <Btn variant="ghost" onClick={() => setEditMode(false)}>취소</Btn>
@@ -316,15 +324,16 @@ export default function MemberPage({ members, assets, history, corporations, dep
                 </div>
                 <div>
                   <p style={{ margin: 0, fontSize: 18, fontWeight: 700, color: C.text }}>{selected.name}</p>
-                  <p style={{ margin: 0, fontSize: 13, color: C.textLight }}>{selected.department} · {selected.role}</p>
+                  <p style={{ margin: 0, fontSize: 13, color: C.textLight }}>{[selected.department, selected.part, selected.role].filter(Boolean).join(" · ")}</p>
                 </div>
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 20 }}>
-                <Field label="사번" value={selected.employeeNo} />
+                <Field label="부서" value={selected.department} />
+                <Field label="파트" value={selected.part || "-"} />
+                <Field label="직위" value={selected.role} />
                 <Field label="이메일" value={selected.email || "-"} />
-                <Field label="법인 · 부서" value={`${selected.corporation} · ${selected.department}`} />
-                <Field label="직급" value={selected.role} />
                 {permission === "admin" && <Field label="시스템 권한" value={PERMISSION_LABELS[selected.permission || ""]} />}
+                {permission === "admin" && selected.permission && <Field label="로그인 아이디" value={selected.loginId || "-"} />}
               </div>
               <div style={{ background: C.bg, borderRadius: 10, padding: 16, marginBottom: 20 }}>
                 <p style={{ margin: "0 0 10px", fontSize: 13, fontWeight: 600, color: "#475569" }}>배정 자산</p>
@@ -374,13 +383,13 @@ export default function MemberPage({ members, assets, history, corporations, dep
                         userSelect: "all", marginBottom: 8,
                       }}>{issuedPassword}</code>
                       <p style={{ margin: 0, fontSize: 12, color: C.textLight }}>
-                        로그인 사번: <strong>{selected.employeeNo}</strong>
+                        로그인 아이디: <strong>{selected.loginId}</strong>
                       </p>
                     </>
                   ) : (
                     <>
                       <p style={{ margin: "0 0 10px", fontSize: 12, color: C.textLight }}>
-                        임시 비밀번호를 발급하면 이 구성원이 사번으로 로그인할 수 있습니다. 기존 비밀번호는 즉시 무효화됩니다.
+                        임시 비밀번호를 발급하면 이 구성원이 아이디로 로그인할 수 있습니다. 기존 비밀번호는 즉시 무효화됩니다.
                       </p>
                       <Btn variant="ghost" small onClick={issueTempPassword}>🔑 임시 비밀번호 발급</Btn>
                     </>

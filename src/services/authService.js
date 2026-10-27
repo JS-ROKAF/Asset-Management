@@ -1,10 +1,10 @@
 import { api, setToken, clearToken } from "../api";
 import { enrich } from "../utils/enrich";
 
-export const handleLogin = async (employeeNo, password, setAuthLoading, setSession) => {
+export const handleLogin = async (loginId, password, setAuthLoading, setSession) => {
   setAuthLoading(true);
   try {
-    const data = await api.login(employeeNo, password);
+    const data = await api.login(loginId, password);
     setToken(data.token);
     setSession(data.member);
   } catch (e) {

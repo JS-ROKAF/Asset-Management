@@ -34,7 +34,8 @@ app.add_middleware(
 INTEGRITY_MESSAGES = {
     "assets.serial": "이미 등록된 시리얼입니다.",
     "assets.id": "이미 있는 자산번호입니다.",
-    "members.employeeNo": "이미 등록된 사번입니다.",
+    "members.loginId": "이미 쓰이는 아이디입니다.",
+    "departments.name": "이미 있는 부서명입니다.",
     "members.email": "이미 등록된 이메일입니다.",
     "status = '사용중'": "사용중이면 사용자가 필요하고, 그 외 상태는 사용자가 없어야 합니다.",
     "FOREIGN KEY": "없는 기준정보·구성원을 참조했습니다.",

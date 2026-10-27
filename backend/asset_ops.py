@@ -199,3 +199,22 @@ def dispose_asset(conn, user, asset: dict, method, reason, event_date=None) -> d
     )
     add_history(conn, user, asset["id"], "폐기", d, detail=f"방법: {method} | 사유: {reason}")
     return get_asset(conn, asset["id"])
+
+
+# ── 가져오기 공통: 이름으로 구성원 찾기 (설계안 v2.1 3-1) ──
+def member_index(conn, active_only: bool) -> list[dict]:
+    sql = """SELECT m.id, m.name, m.departmentId, m.part, m.position, m.email, m.status, d.name deptName
+             FROM members m LEFT JOIN departments d ON d.id = m.departmentId"""
+    return [dict(r) for r in conn.execute(sql + (" WHERE m.status = '재직'" if active_only else ""))]
+
+
+def find_member(members: list[dict], text: str) -> tuple[list[dict], bool]:
+    """'이름' 또는 '이름/부서'. (일치 목록, 부서까지 지정했는지) — 판정은 호출자가 한다"""
+    name, sep, dept = (p.strip() for p in text.partition("/"))
+    return [m for m in members if m["name"] == name and (not sep or m["deptName"] == dept)], bool(sep)
+
+
+def ambiguous_msg(hits: list[dict], with_dept: bool) -> str:
+    if with_dept:
+        return f"같은 부서에 같은 이름이 {len(hits)}명입니다. 화면에서 직접 지정하세요."
+    return f"같은 이름이 {len(hits)}명입니다. 이름/부서 형식으로 적어 주세요."

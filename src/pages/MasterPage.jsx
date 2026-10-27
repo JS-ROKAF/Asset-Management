@@ -1,12 +1,12 @@
 import React, { useState } from "react";
 import { api } from "../api";
-import { Btn, Modal, InputField, SelectField, PageHeader } from "../components/common";
+import { Btn, Modal, InputField, PageHeader } from "../components/common";
 import { C } from "../constants";
 
 // 탭별 설정: API 종류, 목록 칸, 입력 칸
 const TABS = {
   corporations: { label: "법인", columns: [["code", "코드"], ["name", "이름"]], empty: { code: "", name: "" } },
-  departments: { label: "부서", columns: [["corporation", "법인"], ["name", "이름"]], empty: { corporationId: "", name: "" } },
+  departments: { label: "부서", columns: [["name", "이름"]], empty: { name: "" } },
   types: { label: "유형", columns: [["code", "코드"], ["name", "이름"], ["hasSpecs", "사양 입력"]], empty: { code: "", name: "", hasSpecs: 0 } },
 };
 
@@ -20,16 +20,12 @@ export default function MasterPage({ corporations, departments, assetTypes, save
   const submit = async () => {
     const { id, ...fields } = editing;
     if (!fields.name?.trim() || ("code" in fields && !fields.code?.trim())) return alert("코드와 이름은 필수입니다.");
-    if ("corporationId" in fields) {
-      if (!fields.corporationId) return alert("법인을 선택해 주세요.");
-      fields.corporationId = Number(fields.corporationId);
-    }
     const ok = await save(() => id ? api.masters.update(tab, id, fields) : api.masters.create(tab, fields));
     if (ok) setEditing(null);
   };
 
   const toggleActive = (r) => save(() => api.masters.update(tab, r.id, { active: r.active ? 0 : 1 }));
-  const startEdit = (r) => setEditing({ id: r.id, ...Object.fromEntries(Object.keys(empty).map(k => [k, k === "corporationId" ? String(r[k]) : r[k]])) });
+  const startEdit = (r) => setEditing({ id: r.id, ...Object.fromEntries(Object.keys(empty).map(k => [k, r[k]])) });
 
   return (
     <main style={{ flex: 1, padding: "36px 40px", overflowY: "auto" }}>
@@ -77,10 +73,6 @@ export default function MasterPage({ corporations, departments, assetTypes, save
       {editing && (
         <Modal title={`${TABS[tab].label} ${editing.id ? "수정" : "추가"}`} onClose={() => setEditing(null)}>
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-            {"corporationId" in editing && (
-              <SelectField label="법인 *" value={editing.corporationId} onChange={v => setEditing({ ...editing, corporationId: v })}
-                options={[{ value: "", label: "선택해 주세요" }, ...corporations.map(c => ({ value: String(c.id), label: `${c.code} · ${c.name}` }))]} />
-            )}
             {"code" in editing && (
               <InputField label="코드 * (자산번호에 쓰임, 사용 중이면 변경 불가)" value={editing.code} onChange={v => setEditing({ ...editing, code: v.toUpperCase() })} />
             )}

@@ -34,11 +34,11 @@ def history(asset_id):
 
 init_db()
 with db() as conn:
-    conn.execute("INSERT INTO departments (corporationId, name) VALUES (1, '경영지원'), (1, '영업')")
+    # 부서 1·2는 초기값(경영, 경영전략기획실)
     conn.executescript("""
-        INSERT INTO members (employeeNo, name, departmentId, permission) VALUES ('admin', '관리자', NULL, 'admin');
-        INSERT INTO members (employeeNo, name, departmentId, permission) VALUES ('2001', '부서장', 1, 'manager');
-        INSERT INTO members (employeeNo, name, departmentId) VALUES ('1001', '홍길동', 1), ('1002', '김철수', 1);
+        INSERT INTO members (name, departmentId, permission, loginId) VALUES ('관리자', NULL, 'admin', 'admin');
+        INSERT INTO members (name, departmentId, permission, loginId) VALUES ('부서장', 1, 'manager', 'mgr');
+        INSERT INTO members (name, departmentId) VALUES ('홍길동', 1), ('김철수', 1);
     """)
 admin = {"id": 1, "permission": "admin", "departmentId": None}
 manager = {"id": 2, "permission": "manager", "departmentId": 1}

@@ -11,10 +11,10 @@ router = APIRouter(prefix="/api/masters", tags=["masters"])
 SPECS = {
     "corporations": {
         "table": "corporations", "fields": ["code", "name", "active"], "locked": ["code"],
-        "used": "SELECT 1 FROM assets WHERE corporationId = :id UNION ALL SELECT 1 FROM departments WHERE corporationId = :id LIMIT 1",
+        "used": "SELECT 1 FROM assets WHERE corporationId = :id LIMIT 1",
     },
     "departments": {
-        "table": "departments", "fields": ["corporationId", "name", "active"], "locked": ["corporationId"],
+        "table": "departments", "fields": ["name", "active"], "locked": [],
         "used": "SELECT 1 FROM assets WHERE departmentId = :id UNION ALL SELECT 1 FROM members WHERE departmentId = :id LIMIT 1",
     },
     "types": {

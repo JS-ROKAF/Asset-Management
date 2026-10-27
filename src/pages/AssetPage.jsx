@@ -73,7 +73,7 @@ function AssetForm({ form, setForm, corporations, departments, assetTypes, membe
   const set = (k) => (v) => setForm({ ...form, [k]: v });
   const type = assetTypes.find(t => String(t.id) === form.typeId);
   const activeOpt = (rows, label) => [{ value: "", label: "선택해 주세요" },
-    ...rows.filter(r => r.active || String(r.id) === form[label]).map(r => ({ value: String(r.id), label: r.code ? `${r.code} · ${r.name}` : `${r.corporation} · ${r.name}` }))];
+    ...rows.filter(r => r.active || String(r.id) === form[label]).map(r => ({ value: String(r.id), label: r.code ? `${r.code} · ${r.name}` : r.name }))];
 
   // 상태–사용자 연동: 사용자를 고르면 사용중, 사용중이 아닌 상태를 고르면 사용자 해제
   const setStatus = (s) => setForm({ ...form, status: s, memberId: s === "사용중" ? form.memberId : null });
@@ -292,7 +292,7 @@ export default function AssetPage({ assets, history, members, corporations, depa
     <select value={value} onChange={e => onChange(e.target.value)}
       style={{ border: `1px solid ${C.border}`, borderRadius: 8, padding: "9px 12px", fontSize: 13, color: C.textMuted, outline: "none", background: C.card, cursor: "pointer" }}>
       <option value="">{label} 전체</option>
-      {options.map(o => <option key={o.id} value={String(o.id)}>{o.corporation ? `${o.corporation} · ${o.name}` : o.name}</option>)}
+      {options.map(o => <option key={o.id} value={String(o.id)}>{o.name}</option>)}
     </select>
   );
 
@@ -437,7 +437,7 @@ export default function AssetPage({ assets, history, members, corporations, depa
             {bulkMode === "move" && (
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                 <SelectField label="이동할 부서 (비우면 유지)" value={bulkMove.departmentId} onChange={v => setBulkMove({ ...bulkMove, departmentId: v })}
-                  options={[{ value: "", label: "유지" }, ...departments.filter(d => d.active).map(d => ({ value: String(d.id), label: `${d.corporation} · ${d.name}` }))]} />
+                  options={[{ value: "", label: "유지" }, ...departments.filter(d => d.active).map(d => ({ value: String(d.id), label: d.name }))]} />
                 <InputField label="이동할 위치 (비우면 유지)" value={bulkMove.location} onChange={v => setBulkMove({ ...bulkMove, location: v })} />
               </div>
             )}

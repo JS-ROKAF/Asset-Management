@@ -25,9 +25,9 @@ conn = get_conn()
 assert conn.execute("PRAGMA user_version").fetchone()[0] == len(MIGRATIONS)
 assert [r[0] for r in conn.execute("SELECT code FROM corporations ORDER BY id")] == ["DR", "TC", "SL"]
 assert [r[0] for r in conn.execute("SELECT code FROM asset_types WHERE hasSpecs = 1 ORDER BY id")] == ["NB", "PC"]
+assert conn.execute("SELECT count(*) FROM departments").fetchone()[0] == 10
 
-conn.execute("INSERT INTO departments (corporationId, name) VALUES (1, '경영지원')")
-conn.execute("INSERT INTO members (employeeNo, name, departmentId) VALUES ('1001', '홍길동', 1)")
+conn.execute("INSERT INTO members (name, departmentId) VALUES ('홍길동', 1)")
 asset = "INSERT INTO assets (id, typeId, corporationId, status, memberId, serial, purchaseDate) VALUES (?, 1, 1, ?, ?, ?, ?)"
 conn.execute(asset, ("DR-NB-0001", "사용중", 1, "S1", "2018-09"))
 conn.execute(asset, ("DR-NB-0002", "미확인", None, None, "2018-09-01"))
@@ -40,8 +40,14 @@ expect_fail(conn, asset, ("DR-NB-0004", "보관", None, "S1", None))     # 시�
 expect_fail(conn, asset, ("DR-NB-0004", "보관", None, "-", None))      # "-"는 NULL로 저장해야 함
 expect_fail(conn, asset, ("DR-NB-0004", "보관", None, None, "2018/09"))  # 날짜 형식
 expect_fail(conn, asset, ("DR-NB-0004", "보관", 99, None, None))       # 없는 구성원 FK
-expect_fail(conn, "INSERT INTO members (employeeNo, name) VALUES ('1001', '중복')")
-expect_fail(conn, "INSERT INTO members (employeeNo, name, permission) VALUES ('1002', 'x', 'root')")
+conn.execute("INSERT INTO members (name) VALUES ('홍길동')")                         # 동명이인은 DB가 막지 않음
+conn.execute("INSERT INTO members (name, permission, loginId) VALUES ('관리자', 'admin', 'Admin')")
+expect_fail(conn, "INSERT INTO members (name, permission, loginId) VALUES ('x', 'viewer', 'ADMIN')")  # 아이디 대소문자 무시 중복
+expect_fail(conn, "INSERT INTO members (name, loginId) VALUES ('x', 'nobody')")        # 권한 없이 아이디
+expect_fail(conn, "INSERT INTO members (name, permission) VALUES ('x', 'root')")
+expect_fail(conn, "INSERT INTO members (name) VALUES ('홍길동/영업')")                  # 구분자 '/'
+expect_fail(conn, "INSERT INTO members (name) VALUES ('')")
+expect_fail(conn, "INSERT INTO departments (name) VALUES ('경영')")
 expect_fail(conn, "INSERT INTO history (assetId, type, eventDate, recordedAt, recordedBy) VALUES ('DR-NB-0001', '삭제', 'd', 'd', 1)")
 conn.close()
 

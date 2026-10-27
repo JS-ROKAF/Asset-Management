@@ -8,7 +8,8 @@ from db.database import db
 security = HTTPBearer()
 
 # passwordHash는 응답에 절대 포함하지 않는다
-MEMBER_PUBLIC = "id, employeeNo, email, name, departmentId, position, permission, status"
+# loginId는 admin 응답에만 붙인다 (다른 사람의 로그인 아이디 목록 비노출, 설계안 v2.1 2장)
+MEMBER_PUBLIC = "id, name, departmentId, part, position, email, permission, status"
 
 
 def get_current_user(creds: HTTPAuthorizationCredentials = Depends(security)) -> dict:

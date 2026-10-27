@@ -10,7 +10,6 @@ export function enrich(data) {
   const members = data.members.map(m => ({
     ...m,
     department: deptName(m.departmentId),
-    corporation: corps.get(depts.get(m.departmentId)?.corporationId)?.code ?? "-",
     role: m.position || "-",
   }));
   const memberMap = byId(members);
@@ -47,7 +46,7 @@ export function enrich(data) {
 
   return {
     corporations: data.corporations,
-    departments: data.departments.map(d => ({ ...d, corporation: corps.get(d.corporationId)?.code ?? "-" })),
+    departments: data.departments,
     assetTypes: data.assetTypes,
     assets, members, history, requests,
   };

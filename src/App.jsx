@@ -15,7 +15,7 @@ import LoginPage from "./pages/LoginPage";
 // ── 메인 App ──
 export default function App() {
   const [session, setSession] = useState(null);
-  const [employeeNo, setEmployeeNo] = useState("");
+  const [loginId, setLoginId] = useState("");
   const [password, setPassword] = useState("");
   const [authLoading, setAuthLoading] = useState(false);
   const [data, setData] = useState(EMPTY_DATA);
@@ -30,7 +30,7 @@ export default function App() {
 
   const handleLoginWrapper = (e) => {
     e?.preventDefault();
-    handleLogin(employeeNo, password, setAuthLoading, setSession);
+    handleLogin(loginId, password, setAuthLoading, setSession);
   };
 
   const refresh = useCallback(async () => {
@@ -103,9 +103,9 @@ export default function App() {
   if (!session)
     return (
       <LoginPage
-        employeeNo={employeeNo}
+        loginId={loginId}
         password={password}
-        setEmployeeNo={setEmployeeNo}
+        setLoginId={setLoginId}
         setPassword={setPassword}
         onLogin={handleLoginWrapper}
         loading={authLoading}

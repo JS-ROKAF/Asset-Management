@@ -317,7 +317,7 @@ export default function Dashboard({ assets, members, history, departments, permi
   const activeMembers = members.filter(m => m.status === "재직");
   const filteredMembers = permission === "admin" ? activeMembers : activeMembers.filter(m => m.departmentId === userDept);
   // 차트 축: 자산이나 구성원이 있는 부서만 (부서 마스터가 많아져도 차트가 뭉개지지 않게)
-  const deptLabel = (d) => `${d.corporation} ${d.name}`;
+  const deptLabel = (d) => d.name;
   const chartDepts = departments.filter(d =>
     filteredAssets.some(a => a.departmentId === d.id) || filteredMembers.some(m => m.departmentId === d.id));
   const filteredHistory = permission === "admin" ? history : history.filter(h =>

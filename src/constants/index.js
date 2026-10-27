@@ -1,6 +1,6 @@
 export {
   ASSET_STATUS, STATUS_OPTIONS, STATUS_COLORS, STATUS_STYLES,
-  HISTORY_TYPES, HISTORY_STYLES, ROLES, PERMISSION_LABELS,
+  HISTORY_TYPES, HISTORY_STYLES, PERMISSION_LABELS,
   REQUEST_STYLES, REQUEST_STATUS_STYLES, C
 };
 
@@ -30,11 +30,6 @@ const HISTORY_STYLES = {
   "실사정정": { background: "#FEF9C3", color: "#854D0E" },
   "폐기":    { background: "#FEE2E2", color: "#991B1B" },
 };
-const ROLES = [
-  "인턴", "사원", "주임", "대리", "과장", "차장", "부장",
-  "연구원", "주임연구원", "선임연구원", "책임연구원", "수석연구원",
-  "원장", "소장", "본부장", "전무", "부사장", "대표"
-];
 const PERMISSION_LABELS = {
   "": "없음 (로그인 불가)",
   viewer: "viewer — 자기 부서 조회·요청",

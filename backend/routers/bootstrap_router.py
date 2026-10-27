@@ -15,10 +15,10 @@ def bootstrap(user: dict = Depends(get_current_user)):
     with db() as conn:
         data = {
             "corporations": _all(conn, "SELECT * FROM corporations ORDER BY id"),
-            "departments": _all(conn, "SELECT * FROM departments ORDER BY corporationId, name"),
+            "departments": _all(conn, "SELECT * FROM departments ORDER BY id"),
             "assetTypes": _all(conn, "SELECT * FROM asset_types ORDER BY id"),
             "assets": _all(conn, "SELECT * FROM assets"),
-            "members": _all(conn, f"SELECT {MEMBER_PUBLIC} FROM members"),
+            "members": _all(conn, f"SELECT {MEMBER_PUBLIC}" + (", loginId" if user["permission"] == "admin" else "") + " FROM members"),
             "history": _all(conn, "SELECT * FROM history ORDER BY eventDate DESC, id DESC"),
             "requests": _all(conn, "SELECT * FROM requests ORDER BY date DESC"),
             "inspections": _all(conn, "SELECT * FROM inspections ORDER BY startedAt DESC"),

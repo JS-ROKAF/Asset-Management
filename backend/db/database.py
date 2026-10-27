@@ -12,7 +12,7 @@ YMD = "'[0-9][0-9][0-9][0-9]-[0-1][0-9]-[0-3][0-9]'"
 
 # 순서가 곧 버전. 적용된 항목은 절대 수정하지 말고 뒤에 추가만 할 것 (PRAGMA user_version = 적용 개수)
 MIGRATIONS = [
-    # 1: 실운영 전환 스키마 (설계안 v2 3-1)
+    # 1: 실운영 전환 스키마 (설계안 v2 3-1 + v2.1 1장. 운영 DB 적용 전이라 v2.1 변경을 이 항목에 직접 반영)
     f"""
     CREATE TABLE corporations (
         id INTEGER PRIMARY KEY,
@@ -22,10 +22,8 @@ MIGRATIONS = [
     );
     CREATE TABLE departments (
         id INTEGER PRIMARY KEY,
-        corporationId INTEGER NOT NULL REFERENCES corporations(id),
-        name TEXT NOT NULL,
-        active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
-        UNIQUE (corporationId, name)
+        name TEXT NOT NULL UNIQUE,
+        active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1))
     );
     CREATE TABLE asset_types (
         id INTEGER PRIMARY KEY,
@@ -36,14 +34,16 @@ MIGRATIONS = [
     );
     CREATE TABLE members (
         id INTEGER PRIMARY KEY,
-        employeeNo TEXT NOT NULL UNIQUE,
-        email TEXT UNIQUE,
-        name TEXT NOT NULL,
+        name TEXT NOT NULL CHECK (name <> '' AND instr(name, '/') = 0),
         departmentId INTEGER REFERENCES departments(id),
+        part TEXT,
         position TEXT,
+        email TEXT UNIQUE,
+        loginId TEXT UNIQUE COLLATE NOCASE,
         permission TEXT CHECK (permission IN ('admin', 'manager', 'viewer')),
         status TEXT NOT NULL DEFAULT '재직' CHECK (status IN ('재직', '퇴직')),
-        passwordHash TEXT
+        passwordHash TEXT,
+        CHECK (loginId IS NULL OR permission IS NOT NULL)
     );
     CREATE TABLE assets (
         id TEXT PRIMARY KEY,
@@ -132,6 +132,9 @@ MIGRATIONS = [
     INSERT INTO asset_types (code, name, hasSpecs) VALUES
         ('NB', '노트북', 1), ('PC', '데스크탑', 1), ('MN', '모니터', 0), ('PH', '전화기', 0),
         ('TV', 'TV', 0), ('PR', '프린터/복합기', 0), ('ET', '기타', 0);
+    INSERT INTO departments (name) VALUES
+        ('경영'), ('경영전략기획실'), ('식품사업부'), ('전략SCM사업부'), ('CIST&GIST'),
+        ('기술연구소'), ('제주바이오센터'), ('음성LH센터'), ('생산공정센터'), ('두래USA');
     """,
 ]
 

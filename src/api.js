@@ -38,7 +38,7 @@ const post = (path, body) => request(path, { method: "POST", body });
 const patch = (path, body) => request(path, { method: "PATCH", body });
 
 export const api = {
-  login: (employeeNo, password) => request("/api/auth/login", { method: "POST", body: { employeeNo, password }, auth: false }),
+  login: (loginId, password) => request("/api/auth/login", { method: "POST", body: { loginId, password }, auth: false }),
   me: () => request("/api/auth/me"),
   bootstrap: () => request("/api/bootstrap"),
   health: () => request("/api/health", { auth: false }),
@@ -58,7 +58,8 @@ export const api = {
     update: (id, fields, moveAssets = false) => patch(`/api/members/${id}`, { fields, moveAssets }),
     // dryRun=true: 검증 결과만(저장 안 함). false: 오류 0건일 때만 서버가 백업 후 저장
     import: (rows, dryRun) => post(`/api/members/import?dry_run=${dryRun ? 1 : 0}`, { rows }),
-    setPermission: (id, permission) => patch(`/api/members/${id}/permission`, { permission }),
+    // 권한을 줄 때 loginId 필수(이미 있으면 생략 가능). permission=null이면 아이디·비밀번호도 서버가 지운다
+    setPermission: (id, permission, loginId) => patch(`/api/members/${id}/permission`, { permission, loginId }),
     retire: (id) => post(`/api/members/${id}/retire`, {}),
     resetPassword: (id, newPassword) => post(`/api/members/${id}/reset_password`, { new_password: newPassword }),
   },
