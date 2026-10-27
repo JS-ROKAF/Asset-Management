@@ -1,66 +1,55 @@
 from fastapi import APIRouter, Depends
 
-from deps import get_current_user
-from db.database import get_conn
+from deps import MEMBER_PUBLIC, get_current_user
+from db.database import db
 
 router = APIRouter(prefix="/api", tags=["bootstrap"])
 
 
+def _all(conn, sql, params=()):
+    return [dict(r) for r in conn.execute(sql, params).fetchall()]
+
+
 @router.get("/bootstrap")
 def bootstrap(user: dict = Depends(get_current_user)):
-    is_admin = user.get("permission") == "admin"
-    dept = user.get("department")
-    conn = get_conn()
+    with db() as conn:
+        data = {
+            "corporations": _all(conn, "SELECT * FROM corporations ORDER BY id"),
+            "departments": _all(conn, "SELECT * FROM departments ORDER BY corporationId, name"),
+            "assetTypes": _all(conn, "SELECT * FROM asset_types ORDER BY id"),
+            "assets": _all(conn, "SELECT * FROM assets"),
+            "members": _all(conn, f"SELECT {MEMBER_PUBLIC} FROM members"),
+            "history": _all(conn, "SELECT * FROM history ORDER BY eventDate DESC, id DESC"),
+            "requests": _all(conn, "SELECT * FROM requests ORDER BY date DESC"),
+            "inspections": _all(conn, "SELECT * FROM inspections ORDER BY startedAt DESC"),
+            "inspectionChecks": _all(conn, "SELECT * FROM inspection_checks"),
+        }
 
-    assets = [dict(r) for r in conn.execute("SELECT * FROM assets").fetchall()]
-    members = [dict(r) for r in conn.execute("SELECT * FROM members").fetchall()]
-    history = [dict(r) for r in conn.execute(
-        'SELECT * FROM history ORDER BY date DESC'
-    ).fetchall()]
-    requests_ = [dict(r) for r in conn.execute(
-        'SELECT * FROM requests ORDER BY date DESC'
-    ).fetchall()]
-    inspections = [dict(r) for r in conn.execute(
-        'SELECT * FROM inspections ORDER BY startDate DESC'
-    ).fetchall()]
-    inspection_items = [dict(r) for r in conn.execute("SELECT * FROM inspection_items").fetchall()]
-    conn.close()
-
-    if not is_admin:
-        assets = [a for a in assets if a.get("department") == dept]
-        members = [m for m in members if m.get("department") == dept]
-        asset_ids_in_dept = {a["id"] for a in assets}
-        history = [h for h in history if h.get("assetId") in asset_ids_in_dept]
-        requests_ = [r for r in requests_ if r.get("assetId") in asset_ids_in_dept]
-        inspection_items = [i for i in inspection_items if i.get("department") == dept]
-
-    return {
-        "assets": assets,
-        "members": members,
-        "history": history,
-        "requests": requests_,
-        "inspections": inspections,
-        "inspectionItems": inspection_items,
-    }
+    if user["permission"] != "admin":
+        dept = user["departmentId"]
+        data["assets"] = [a for a in data["assets"] if a["departmentId"] == dept]
+        data["members"] = [m for m in data["members"] if m["departmentId"] == dept]
+        ids = {a["id"] for a in data["assets"]}
+        for key in ("history", "requests", "inspectionChecks"):
+            data[key] = [r for r in data[key] if r["assetId"] in ids]
+    return data
 
 
 @router.get("/health")
 def health():
-    conn = get_conn()
-    conn.execute("SELECT 1")
-    conn.close()
+    with db() as conn:
+        conn.execute("SELECT 1")
     return {"status": "ok"}
 
 
 @router.get("/table_counts")
 def table_counts(user: dict = Depends(get_current_user)):
-    conn = get_conn()
     counts = {}
-    for table, label in [
-        ("assets", "자산"), ("members", "구성원"), ("history", "이력"),
-        ("requests", "요청"), ("inspections", "정기실사"),
-    ]:
-        count = conn.execute(f"SELECT COUNT(*) c FROM {table}").fetchone()["c"]
-        counts[table] = {"label": label, "count": count}
-    conn.close()
+    with db() as conn:
+        for table, label in [
+            ("assets", "자산"), ("members", "구성원"), ("history", "이력"),
+            ("requests", "요청"), ("inspections", "정기실사"),
+        ]:
+            count = conn.execute(f"SELECT COUNT(*) c FROM {table}").fetchone()["c"]
+            counts[table] = {"label": label, "count": count}
     return counts

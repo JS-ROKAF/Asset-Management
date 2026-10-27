@@ -45,3 +45,6 @@ _run_server.py
 
 # 렌더 스모크 빌드 산출물
 .smokeout/
+
+# JWT 서명키 (첫 실행 시 자동 생성)
+backend/.jwt_secret

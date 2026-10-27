@@ -1,5 +1,6 @@
 import os
 import sqlite3
+from contextlib import contextmanager
 from pathlib import Path
 
 # ASSETHUB_DB: 테스트용 복사본 경로 지정 (운영 DB 보호)
@@ -141,6 +142,17 @@ def get_conn():
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
     return conn
+
+
+@contextmanager
+def db():
+    """성공 시에만 commit, 예외 시 rollback, 어느 경우든 연결을 닫는다 (database is locked 방지)"""
+    conn = get_conn()
+    try:
+        with conn:
+            yield conn
+    finally:
+        conn.close()
 
 
 def init_db():

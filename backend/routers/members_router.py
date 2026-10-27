@@ -1,33 +1,58 @@
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from auth import hash_password
-from db.database import get_conn
+from db.database import db
 from db.helpers import MEMBER_COLUMNS, insert_rows, update_row, delete_rows
-from deps import get_current_user, require_admin
+from deps import MEMBER_PUBLIC, require_admin, require_not_viewer
 
 router = APIRouter(prefix="/api/members", tags=["members"])
 
 
+def _public(rows: list[dict]) -> list[dict]:
+    return [{k: v for k, v in r.items() if k != "passwordHash"} for r in rows]
+
+
 @router.post("/bulk_insert")
-def bulk_insert(rows: list[dict[str, Any]], user: dict = Depends(get_current_user)):
-    return insert_rows("members", MEMBER_COLUMNS, rows)
+def bulk_insert(rows: list[dict[str, Any]], user: dict = Depends(require_not_viewer)):
+    return _public(insert_rows("members", MEMBER_COLUMNS, rows))
 
 
 @router.post("/bulk_delete")
-def bulk_delete(body: dict[str, Any], user: dict = Depends(get_current_user)):
+def bulk_delete(body: dict[str, Any], user: dict = Depends(require_admin)):
     delete_rows("members", body.get("ids", []))
     return {"ok": True}
 
 
 @router.patch("/{member_id}")
-def update_member(member_id: str, fields: dict[str, Any], user: dict = Depends(get_current_user)):
+def update_member(member_id: int, fields: dict[str, Any], user: dict = Depends(require_not_viewer)):
+    # MEMBER_COLUMNS에 permission이 없으므로 여기서는 권한을 바꿀 수 없다 (아래 /permission 전용)
     updated = update_row("members", MEMBER_COLUMNS, member_id, fields)
     if not updated:
         raise HTTPException(404, "구성원을 찾을 수 없습니다.")
-    return updated
+    return _public([updated])[0]
+
+
+class PermissionReq(BaseModel):
+    permission: Literal["admin", "manager", "viewer"] | None
+
+
+@router.patch("/{member_id}/permission")
+def set_permission(member_id: int, req: PermissionReq, user: dict = Depends(require_admin)):
+    if member_id == user["id"] and req.permission != "admin":
+        raise HTTPException(400, "자기 자신의 관리자 권한은 해제할 수 없습니다.")
+    with db() as conn:
+        # 권한 회수 시 비밀번호도 지워 재부여 때 새로 발급받게 한다
+        cur = conn.execute(
+            "UPDATE members SET permission = ?, passwordHash = CASE WHEN ? IS NULL THEN NULL ELSE passwordHash END WHERE id = ?",
+            (req.permission, req.permission, member_id),
+        )
+        if not cur.rowcount:
+            raise HTTPException(404, "구성원을 찾을 수 없습니다.")
+        row = conn.execute(f"SELECT {MEMBER_PUBLIC} FROM members WHERE id = ?", (member_id,)).fetchone()
+    return dict(row)
 
 
 class ResetPasswordReq(BaseModel):
@@ -35,16 +60,14 @@ class ResetPasswordReq(BaseModel):
 
 
 @router.post("/{member_id}/reset_password")
-def reset_password(member_id: str, req: ResetPasswordReq, user: dict = Depends(require_admin)):
-    conn = get_conn()
-    row = conn.execute("SELECT id FROM members WHERE id = ?", (member_id,)).fetchone()
-    if not row:
-        conn.close()
-        raise HTTPException(404, "구성원을 찾을 수 없습니다.")
-    conn.execute(
-        "UPDATE members SET password_hash = ? WHERE id = ?",
-        (hash_password(req.new_password), member_id),
-    )
-    conn.commit()
-    conn.close()
+def reset_password(member_id: int, req: ResetPasswordReq, user: dict = Depends(require_admin)):
+    if len(req.new_password) < 8:
+        raise HTTPException(400, "비밀번호는 8자 이상이어야 합니다.")
+    with db() as conn:
+        row = conn.execute("SELECT permission FROM members WHERE id = ?", (member_id,)).fetchone()
+        if not row:
+            raise HTTPException(404, "구성원을 찾을 수 없습니다.")
+        if row["permission"] is None:
+            raise HTTPException(400, "로그인 권한이 없는 구성원입니다. 권한을 먼저 부여하세요.")
+        conn.execute("UPDATE members SET passwordHash = ? WHERE id = ?", (hash_password(req.new_password), member_id))
     return {"ok": True}
