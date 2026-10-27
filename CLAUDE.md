@@ -191,7 +191,7 @@ backend/
 ├── auth.py                # 비밀번호 해시(bcrypt), JWT 발급/검증
 ├── deps.py                # get_current_user / require_admin 등 인증 의존성
 ├── seed_admin.py          # admin 계정 생성/비밀번호 초기화 스크립트
-├── backup_db.py           # SQLite 백업 스크립트 (db/backups/에 타임스탬프 복사, 30일 보관)
+├── backup_db.py           # SQLite 백업: backup(tag)=로컬 db/backups/ 30일(가져오기 직전 자동), 직접 실행=NAS 매일 백업 14세대
 ├── requirements.txt
 ├── db/
 │   ├── database.py         # SQLite 연결 + init_db() 스키마 정의
@@ -458,6 +458,8 @@ src/
 - 이관: 구성원 75명 + 시스템관리자, 자산 207대(사용중 114, 미확인 93). 원본은 사내 공유폴더의 `IT자산_대장대조_261027`·`기준정보_초안_261027` (실데이터라 저장소에 넣지 않음)
 - 실사 체크용 비고 표시: "법인 확인 필요"(DR 추정 34대), "번호 확인 필요"(12대), "설문 사용자:"(명단에 없는 사용자 9대). 구자산번호 중복 5쌍은 실사에서 정리
 - 바탕화면 `AssetHub.lnk`가 없어져 있어 재생성(→ `tray_AssetHub.bat`)
+- **자동 시작**: 이 PC는 HR AGENT 설정으로 매일 08:00 자동 재부팅(`HrAgent_DailyReboot`) → 자동 로그온 → 시작프로그램. 시작프로그램 폴더(`%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup`)에 `AssetHub.lnk` 등록 — 없으면 재부팅 후 AssetHub가 꺼진 채로 남는다
+- **NAS 매일 백업**: 작업 스케줄러 `AssetHub_DbBackup` 매일 04:40 → `pythonw backend/backup_db.py` → `\\Durae_Nas_HQ\NetBackup\AssetHub\assethub_YYYYMMDD.db`, 14세대. 결과는 `db/backup_nas.log`(OK/FAIL 한 줄씩). HR AGENT `backup_db.py`와 같은 방식 — **작업 계정은 Interactive 필수**(SYSTEM은 NAS 자격 증명에 접근 못 함)
 - 이 전환부터는 실데이터가 있으므로 **DB 재생성 금지**. 스키마 변경은 `MIGRATIONS`에 항목 추가로만
 
 ---
