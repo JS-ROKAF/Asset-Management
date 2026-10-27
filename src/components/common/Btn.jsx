@@ -1,6 +1,6 @@
 import { C } from "../../constants";
 
-export default function Btn ({ onClick, children, variant = "primary", small }) {
+export default function Btn ({ onClick, children, variant = "primary", small, disabled = false }) {
   const styles = {
     primary: { background: C.primary, color: "#fff", border: "none" },
     ghost:   { background: "#fff", color: C.textMuted, border: `1px solid ${C.border}` },
@@ -8,10 +8,11 @@ export default function Btn ({ onClick, children, variant = "primary", small }) 
     purple:  { background: C.purple, color: "#fff", border: "none" },
   };
   return (
-    <button onClick={onClick}
-      style={{ ...styles[variant], padding: small ? "7px 14px" : "10px 20px", borderRadius: 8, fontSize: small ? 13 : 14, fontWeight: 600, cursor: "pointer", transition: "opacity 0.15s" }}
-      onMouseEnter={e => e.currentTarget.style.opacity = "0.85"}
-      onMouseLeave={e => e.currentTarget.style.opacity = "1"}
+    <button onClick={onClick} disabled={disabled}
+      style={{ ...styles[variant], padding: small ? "7px 14px" : "10px 20px", borderRadius: 8, fontSize: small ? 13 : 14, fontWeight: 600,
+        cursor: disabled ? "not-allowed" : "pointer", opacity: disabled ? 0.45 : 1, transition: "opacity 0.15s" }}
+      onMouseEnter={e => { if (!disabled) e.currentTarget.style.opacity = "0.85"; }}
+      onMouseLeave={e => { if (!disabled) e.currentTarget.style.opacity = "1"; }}
     >
       {children}
     </button>

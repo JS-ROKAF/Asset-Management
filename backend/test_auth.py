@@ -12,11 +12,10 @@ from fastapi.security import HTTPAuthorizationCredentials  # noqa: E402
 
 from auth import create_token  # noqa: E402
 from db.database import db  # noqa: E402
-from db.helpers import MEMBER_COLUMNS, insert_rows  # noqa: E402
 from deps import get_current_user  # noqa: E402
 from routers.auth_router import LoginReq, login  # noqa: E402
 from routers.bootstrap_router import bootstrap  # noqa: E402
-from routers.members_router import PermissionReq, ResetPasswordReq, reset_password, set_permission, update_member  # noqa: E402
+from routers.members_router import PermissionReq, ResetPasswordReq, UpdateReq, create_member, reset_password, set_permission, update_member  # noqa: E402
 from seed_admin import seed_admin  # noqa: E402
 
 
@@ -48,8 +47,8 @@ reset_password(viewer_id, ResetPasswordReq(new_password="temppass12"), admin)
 viewer = user_from(login(LoginReq(employeeNo="1001", password="temppass12"))["token"])
 assert viewer["permission"] == "viewer"
 
-# viewer 권한 승격 차단: 일반 PATCH로는 permission이 무시됨
-update_member(viewer_id, {"permission": "admin", "name": "홍길동"}, admin)
+# viewer 권한 승격 차단: 일반 PATCH로는 permission을 보낼 수 없음
+assert status_of(update_member, viewer_id, UpdateReq(fields={"permission": "admin"}), admin) == 400
 with db() as conn:
     assert conn.execute("SELECT permission FROM members WHERE id = ?", (viewer_id,)).fetchone()[0] == "viewer"
 
@@ -65,10 +64,10 @@ assert all("passwordHash" not in m for m in bootstrap(admin)["members"])
 
 # 쓰기 실패 후에도 연결이 남지 않아 다음 쓰기가 잠기지 않음
 try:
-    insert_rows("members", MEMBER_COLUMNS, [{"employeeNo": "1001", "name": "중복"}])
+    create_member({"employeeNo": "1001", "name": "중복"}, admin)
     raise AssertionError("중복 사번이 통과됨")
 except sqlite3.IntegrityError:
     pass
-insert_rows("members", MEMBER_COLUMNS, [{"employeeNo": "1002", "name": "김철수"}])
+create_member({"employeeNo": "1002", "name": "김철수"}, admin)
 
 print("OK")

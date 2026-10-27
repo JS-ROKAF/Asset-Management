@@ -10,6 +10,8 @@ import MemberPage from "./src/pages/MemberPage.jsx";
 import HistoryPage from "./src/pages/HistoryPage.jsx";
 import RequestPage from "./src/pages/RequestPage.jsx";
 import MasterPage from "./src/pages/MasterPage.jsx";
+import * as XLSX from "xlsx";
+import { memberTemplate } from "./src/utils/templates.js";
 
 const cards = renderToStaticMarkup(
   <SummaryCards items={[{ label: "전체 자산", value: 42, color: "#3B82F6" }]} />
@@ -55,4 +57,12 @@ for (const [Page, expected] of pages) {
   assert.match(html, expected, `${Page.name} 렌더 결과에 ${expected} 없음`);
 }
 
-console.log("OK — SummaryCards + 배지 4종 + 페이지 6개 렌더 정상");
+// 양식 왕복: 내려받은 양식을 그대로 읽으면 머리글 + 예시 1행만 나와야 함 (텍스트 서식 빈 칸이 행으로 섞이면 안 됨)
+const wb = XLSX.read(XLSX.write(memberTemplate(data), { type: "array", bookType: "xlsx" }), { type: "array" });
+assert.deepEqual(wb.SheetNames, ["구성원목록", "코드표"]);
+const back = XLSX.utils.sheet_to_json(wb.Sheets["구성원목록"], { defval: "", raw: false }).filter(r => Object.values(r).some(v => v !== ""));
+assert.equal(back.length, 1);
+assert.equal(back[0]["사번"], "20230001");
+assert.equal(back[0]["부서"], "경영지원");
+
+console.log("OK — SummaryCards + 배지 4종 + 페이지 6개 렌더 + 구성원 양식 왕복 정상");

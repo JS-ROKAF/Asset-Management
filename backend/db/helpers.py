@@ -1,9 +1,6 @@
 from db.database import db
 
-# ponytail: 범용 엔드포인트용 화이트리스트. 구성원(4번)·요청/실사(2·3단계) 전용 API로 바뀌면 제거
-# permission·passwordHash 제외 — 권한은 admin 전용 경로로만 변경
-# status도 제외 — 퇴직은 자산 반납이 따라오는 /retire로만
-MEMBER_COLUMNS = ["id", "employeeNo", "email", "name", "departmentId", "position"]
+# ponytail: 범용 엔드포인트용 화이트리스트. 요청/실사가 2·3단계에서 전용 API로 바뀌면 제거
 REQUEST_COLUMNS = [
     "id", "type", "assetId", "targetMemberId", "requesterId",
     "status", "note", "resolvedNote", "resolvedDate", "date",

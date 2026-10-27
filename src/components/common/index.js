@@ -3,6 +3,7 @@ export { default as Modal } from "./Modal";
 export { default as InputField } from "./InputField";
 export { default as SelectField } from "./SelectField";
 export { default as MemberSelect } from "./MemberSelect";
+export { default as ImportModal } from "./ImportModal";
 export { default as Field } from "./Field";
 export { default as PageHeader } from "./PageHeader";
 export { default as SummaryCards } from "./SummaryCards";

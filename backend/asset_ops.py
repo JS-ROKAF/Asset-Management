@@ -54,10 +54,10 @@ def get_asset(conn, asset_id) -> dict:
     return dict(row)
 
 
-def check_scope(user, *dept_ids):
-    # manager는 자기 부서 자산만. 부서 이동이면 이전·이후 부서 모두 자기 부서여야 함
+def check_scope(user, *dept_ids, what="자산"):
+    # manager는 자기 부서만. 부서 이동이면 이전·이후 부서 모두 자기 부서여야 함
     if user["permission"] == "manager" and any(d != user["departmentId"] for d in dept_ids):
-        raise HTTPException(403, "자기 부서 자산만 처리할 수 있습니다.")
+        raise HTTPException(403, f"자기 부서 {what}만 처리할 수 있습니다.")
 
 
 def _check_member(conn, member_id):

@@ -112,7 +112,7 @@ export default function App() {
       />
     );
 
-  const common = { ...data, permission, userDept, currentUser, save };
+  const common = { ...data, permission, userDept, currentUser, save, refresh };
 
   // ── 메인 레이아웃 ──
   return (

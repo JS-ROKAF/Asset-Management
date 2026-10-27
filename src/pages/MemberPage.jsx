@@ -9,9 +9,11 @@ import {
   SummaryCards,
   SearchFilter,
   StatusBadge,
-  HistoryBadge
+  HistoryBadge,
+  ImportModal,
 } from "../components/common";
 import { api } from "../api";
+import { memberTemplate } from "../utils/templates";
 import { ROLES, PERMISSION_LABELS, C } from "../constants";
 import { displayDate } from "../utils/date";
 import { displayUser } from "../utils/user";
@@ -27,7 +29,7 @@ const toPayload = (f) => ({
 });
 
 // ── 구성원 관리 ──
-export default function MemberPage({ members, assets, history, departments, permission, userDept, save }) {
+export default function MemberPage({ members, assets, history, corporations, departments, permission, userDept, save, refresh }) {
   const visibleMembers = (permission === "admin" ? members : members.filter(m => m.departmentId === userDept))
     .filter(m => m.status !== "퇴직");
   const activeAssets = assets.filter(a => !a.isDisposed);
@@ -43,6 +45,7 @@ export default function MemberPage({ members, assets, history, departments, perm
   const [filterDept, setFilterDept] = useState("");
   const [sortBy, setSortBy] = useState("name");
   const [viewMode, setViewMode] = useState("card");
+  const [importOpen, setImportOpen] = useState(false);
 
   const deptOptions = [{ value: "", label: "미지정" },
     ...departments.filter(d => d.active).map(d => ({ value: String(d.id), label: `${d.corporation} · ${d.name}` }))];
@@ -82,8 +85,13 @@ export default function MemberPage({ members, assets, history, departments, perm
 
   const saveMember = async () => {
     if (!editForm.employeeNo.trim() || !editForm.name.trim()) return alert("사번과 이름은 필수입니다.");
+    const payload = toPayload(editForm);
+    const held = memberAssets(selected.id).length;
+    // 부서가 바뀌고 보유 자산이 있으면 자산도 옮길지 확인 (설계안 3-6)
+    const moveAssets = payload.departmentId !== selected.departmentId && held > 0 &&
+      window.confirm(`보유 자산 ${held}개도 새 부서로 이동할까요?\n[확인] 자산도 이동(이동 이력 생성) / [취소] 구성원 부서만 변경`);
     const ok = await save(async () => {
-      await api.members.update(selected.id, toPayload(editForm));
+      await api.members.update(selected.id, payload, moveAssets);
       if (permission === "admin" && editPermission !== (selected.permission || "")) {
         await api.members.setPermission(selected.id, editPermission || null);
       }
@@ -118,7 +126,20 @@ export default function MemberPage({ members, assets, history, departments, perm
   return (
     <main style={{ flex: 1, padding: "36px 40px", overflowY: "auto" }}>
       <PageHeader title="구성원 관리" subtitle="부서별 구성원과 배정 자산을 관리하세요"
-        action={permission !== "viewer" ? <Btn onClick={() => setAddOpen(true)}>+ 구성원 등록</Btn> : null} />
+        action={permission !== "viewer" ? (
+          <div style={{ display: "flex", gap: 8 }}>
+            {permission === "admin" && <Btn variant="ghost" onClick={() => setImportOpen(true)}>⬆ 엑셀 가져오기</Btn>}
+            <Btn onClick={() => setAddOpen(true)}>+ 구성원 등록</Btn>
+          </div>
+        ) : null} />
+      {importOpen && (
+        <ImportModal title="구성원 엑셀 가져오기 (사번 기준: 없으면 등록, 있으면 갱신)" templateName="구성원등록_양식.xlsx"
+          makeTemplate={() => memberTemplate({ corporations, departments })}
+          run={api.members.import}
+          summary={r => `신규 ${r.create} · 갱신 ${r.update} · 변경 없음 ${r.same}`}
+          onClose={() => setImportOpen(false)}
+          onSaved={async () => { setImportOpen(false); await refresh(); }} />
+      )}
       <SummaryCards items={[
         { label: "재직 구성원", value: visibleMembers.length, color: C.primary },
         { label: "로그인 계정", value: visibleMembers.filter(m => m.permission).length, color: C.purple },

@@ -53,8 +53,10 @@ export const api = {
     dispose: (id, method, reason) => post(`/api/assets/${id}/dispose`, { method, reason }),
   },
   members: {
-    create: (fields) => post("/api/members/bulk_insert", [fields]).then(rows => rows[0]),
-    update: (id, fields) => patch(`/api/members/${id}`, fields),
+    create: (fields) => post("/api/members", fields),
+    update: (id, fields, moveAssets = false) => patch(`/api/members/${id}`, { fields, moveAssets }),
+    // dryRun=true: 검증 결과만(저장 안 함). false: 오류 0건일 때만 서버가 백업 후 저장
+    import: (rows, dryRun) => post(`/api/members/import?dry_run=${dryRun ? 1 : 0}`, { rows }),
     setPermission: (id, permission) => patch(`/api/members/${id}/permission`, { permission }),
     retire: (id) => post(`/api/members/${id}/retire`, {}),
     resetPassword: (id, newPassword) => post(`/api/members/${id}/reset_password`, { new_password: newPassword }),
