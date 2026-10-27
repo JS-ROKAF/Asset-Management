@@ -51,6 +51,7 @@ export const api = {
     update: (id, { fields, updatedAt, eventDate, memo, repair }) => patch(`/api/assets/${id}`, { fields, updatedAt, eventDate, memo, repair }),
     bulk: (ids, fields, memo) => post("/api/assets/bulk", { ids, fields, memo }),
     dispose: (id, method, reason) => post(`/api/assets/${id}/dispose`, { method, reason }),
+    import: (rows, dryRun) => post(`/api/assets/import?dry_run=${dryRun ? 1 : 0}`, { rows }),
   },
   members: {
     create: (fields) => post("/api/members", fields),

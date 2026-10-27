@@ -3,9 +3,11 @@ from typing import Any, Literal
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
+import asset_import
 from asset_ops import apply_change, create_asset, dispose_asset, get_asset as load_asset
+from backup_db import backup
 from db.database import db
-from deps import get_current_user, require_not_viewer
+from deps import get_current_user, require_admin, require_not_viewer
 
 router = APIRouter(prefix="/api/assets", tags=["assets"])
 
@@ -69,6 +71,30 @@ def update(asset_id: str, req: PatchReq, user: dict = Depends(require_not_viewer
         if asset["updatedAt"] != req.updatedAt:
             raise HTTPException(409, "다른 사용자가 먼저 수정했습니다. 새로고침 후 다시 시도하세요.")
         return apply_change(conn, user, asset, req.fields, req.eventDate, req.memo, req.repair)
+
+
+class ImportReq(BaseModel):
+    rows: list[dict[str, Any]] = Field(max_length=3000)
+
+
+@router.post("/import")
+def import_assets(req: ImportReq, dry_run: bool = False, user: dict = Depends(require_admin)):
+    # 쓰기 잠금을 먼저 잡고 검증 → 백업 → 단일 트랜잭션 저장. 한 건이라도 실패하면 전체 취소
+    with db(write=not dry_run) as conn:
+        items, errors = asset_import.plan(conn, req.rows)
+        statuses = {}
+        for it in items:
+            statuses[it["fields"]["status"]] = statuses.get(it["fields"]["status"], 0) + 1
+        summary = {
+            "total": len(items) + len({e["row"] for e in errors}), "create": len(items),
+            "statuses": statuses, "errors": errors, "saved": False,
+        }
+        if dry_run or errors:
+            return summary
+        summary["backup"] = backup("before_asset_import").name
+        summary["ids"] = asset_import.apply(conn, user, items)
+        summary["saved"] = True
+        return summary
 
 
 @router.post("/bulk")

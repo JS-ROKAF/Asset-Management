@@ -11,7 +11,7 @@ import HistoryPage from "./src/pages/HistoryPage.jsx";
 import RequestPage from "./src/pages/RequestPage.jsx";
 import MasterPage from "./src/pages/MasterPage.jsx";
 import * as XLSX from "xlsx";
-import { memberTemplate } from "./src/utils/templates.js";
+import { assetTemplate, memberTemplate } from "./src/utils/templates.js";
 
 const cards = renderToStaticMarkup(
   <SummaryCards items={[{ label: "전체 자산", value: 42, color: "#3B82F6" }]} />
@@ -62,7 +62,12 @@ const wb = XLSX.read(XLSX.write(memberTemplate(data), { type: "array", bookType:
 assert.deepEqual(wb.SheetNames, ["구성원목록", "코드표"]);
 const back = XLSX.utils.sheet_to_json(wb.Sheets["구성원목록"], { defval: "", raw: false }).filter(r => Object.values(r).some(v => v !== ""));
 assert.equal(back.length, 1);
-assert.equal(back[0]["사번"], "20230001");
+assert.match(back[0]["사번"], /^예시/);
 assert.equal(back[0]["부서"], "경영지원");
+const awb = XLSX.read(XLSX.write(assetTemplate(data), { type: "array", bookType: "xlsx" }), { type: "array" });
+const aback = XLSX.utils.sheet_to_json(awb.Sheets["자산목록"], { defval: "", raw: true }).filter(r => Object.values(r).some(v => v !== ""));
+assert.equal(aback.length, 1);
+assert.equal(aback[0]["취득일자"], "2018-09");   // 텍스트 서식 — 날짜로 바뀌지 않음
+assert.equal(aback[0]["부서"], "DR | 경영지원");
 
-console.log("OK — SummaryCards + 배지 4종 + 페이지 6개 렌더 + 구성원 양식 왕복 정상");
+console.log("OK — SummaryCards + 배지 4종 + 페이지 6개 렌더 + 구성원·자산 양식 왕복 정상");

@@ -16,8 +16,10 @@ import {
   SearchFilter,
   StatusBadge,
   HistoryBadge,
-  Pagination
+  Pagination,
+  ImportModal,
 } from "../components/common";
+import { assetTemplate } from "../utils/templates";
 import SortableTable from "../components/SortableTable";
 import { QRCodeSVG } from "qrcode.react";
 
@@ -146,13 +148,14 @@ const EMPTY_EVENT = { eventDate: "", memo: "" };
 const eventPayload = (ev) => ({ eventDate: ev.eventDate || null, memo: ev.memo.trim() || null });
 
 // ── 자산관리 ──
-export default function AssetPage({ assets, history, members, corporations, departments, assetTypes, permission, userDept, currentUser, save, focusAssetId, onFocusCleared, initialStatus }) {
+export default function AssetPage({ assets, history, members, corporations, departments, assetTypes, permission, userDept, currentUser, save, refresh, focusAssetId, onFocusCleared, initialStatus }) {
   // 부서장/뷰어면 자기 부서 자산만
   const visibleAssets = (permission === "admin" ? assets : assets.filter(a => a.departmentId === userDept))
     .filter(a => !a.isDisposed);
   const masters = { corporations, departments, assetTypes, members };
 
   const [addOpen, setAddOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [quantity, setQuantity] = useState(1);
   const [manualId, setManualId] = useState("");
@@ -299,8 +302,21 @@ export default function AssetPage({ assets, history, members, corporations, depa
   return (
     <main style={{ flex: 1, padding: "36px 40px", overflowY: "auto" }}>
       <PageHeader title="자산 관리" subtitle="등록된 IT 기기를 한눈에 확인하세요"
-        action={permission !== "viewer" ? <Btn onClick={() => setAddOpen(true)}>+ 자산 등록</Btn> : null}
+        action={permission !== "viewer" ? (
+          <div style={{ display: "flex", gap: 8 }}>
+            {permission === "admin" && <Btn variant="ghost" onClick={() => setImportOpen(true)}>⬆ 엑셀 가져오기</Btn>}
+            <Btn onClick={() => setAddOpen(true)}>+ 자산 등록</Btn>
+          </div>
+        ) : null}
       />
+      {importOpen && (
+        <ImportModal title="자산 엑셀 가져오기 (구성원을 먼저 등록하세요)" templateName="자산등록_양식.xlsx"
+          makeTemplate={() => assetTemplate({ corporations, departments, assetTypes })}
+          run={api.assets.import}
+          summary={r => `등록 ${r.create}건 (${Object.entries(r.statuses).map(([s, n]) => `${s} ${n}`).join(", ") || "-"})`}
+          onClose={() => setImportOpen(false)}
+          onSaved={async () => { setImportOpen(false); await refresh(); }} />
+      )}
       <SummaryCards items={[
         { label: "전체 자산", value: visibleAssets.length, color: C.primary },
         ...STATUS_OPTIONS.map(s => ({ label: s, value: visibleAssets.filter(a => a.status === s).length, color: STATUS_COLORS[s] })),

@@ -62,11 +62,12 @@ rows = [
     {"사번": "1001", "이름": "홍길동", "법인코드": "DR", "부서": "폐지부서"},                         # 비활성 (사번 중복도)
     {"사번": "", "이름": "", "법인코드": "", "부서": ""},                                            # 빈 행: 무시
     {"사번": "3003", "이름": "x", "법인코드": "DR", "부서": "영업", "재직상태": "휴직"},
+    {"사번": "예시(이 행은 지우세요)", "이름": "홍길동", "법인코드": "DR", "부서": "영업"},
 ]
 res = import_members(ImportReq(rows=rows), dry_run=False, user=admin)
 assert not res["saved"]
 got = {(e["row"], e["column"]) for e in res["errors"]}
-assert got == {(4, "사번"), (5, "이름"), (5, "부서"), (6, "사번"), (6, "부서"), (8, "재직상태")}, got
+assert got == {(4, "사번"), (5, "이름"), (5, "부서"), (6, "사번"), (6, "부서"), (8, "재직상태"), (9, "사번")}, got
 with db() as conn:
     assert conn.execute("SELECT count(*) FROM members WHERE employeeNo = '3001'").fetchone()[0] == 0
 

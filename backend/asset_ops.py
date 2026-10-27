@@ -10,6 +10,7 @@ EDITABLE = [
     "vendor", "approvalNo", "cpu", "ram", "storage", "os", "note",
 ]
 FIELD_LABELS = {"departmentId": "부서", "location": "위치", "corporationId": "법인"}
+STATUSES = ["사용중", "공용", "보관", "수리중", "분실", "미확인"]   # DB CHECK와 같은 목록
 
 
 def now() -> str:

@@ -116,6 +116,9 @@ def plan_member_import(conn, rows: list[dict]) -> tuple[list[dict], list[dict]]:
 
         if not any(_cell(row, k) for k in IMPORT_COLUMNS):
             continue   # 빈 행은 건너뜀
+        if _cell(row, "사번").startswith("예시"):
+            err("사번", "양식의 예시 행입니다. 지우고 다시 올려 주세요.")
+            continue
         no, name, dept_name = _cell(row, "사번"), _cell(row, "이름"), _cell(row, "부서")
         corp = _cell(row, "법인코드").upper()
         email, status = _cell(row, "이메일") or None, _cell(row, "재직상태") or "재직"

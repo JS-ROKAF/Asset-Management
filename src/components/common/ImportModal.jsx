@@ -39,8 +39,8 @@ export default function ImportModal({ title, templateName, makeTemplate, run, su
     reader.onload = async (evt) => {
       try {
         const wb = XLSX.read(evt.target.result, { type: "array" });
-        // raw:false — 셀에 보이는 그대로(텍스트) 읽는다
-        const parsed = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: "", raw: false });
+        // raw:true — 원본 값 그대로 (날짜 셀은 엑셀 일련번호 숫자). 날짜·금액 해석은 서버 규칙 하나로
+        const parsed = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: "", raw: true });
         if (!parsed.length) return setError("데이터가 없습니다. 첫 번째 시트를 확인해 주세요.");
         setRows(parsed);
         await call(parsed, true);
