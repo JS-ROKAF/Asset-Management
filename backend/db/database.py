@@ -145,11 +145,14 @@ def get_conn():
 
 
 @contextmanager
-def db():
-    """성공 시에만 commit, 예외 시 rollback, 어느 경우든 연결을 닫는다 (database is locked 방지)"""
+def db(write=False):
+    """성공 시에만 commit, 예외 시 rollback, 어느 경우든 연결을 닫는다 (database is locked 방지).
+    write=True: 시작부터 쓰기 잠금(BEGIN IMMEDIATE) — 읽고 판단한 뒤 쓰는 작업이 그 사이 다른 쓰기와 엇갈리지 않게"""
     conn = get_conn()
     try:
         with conn:
+            if write:
+                conn.execute("BEGIN IMMEDIATE")
             yield conn
     finally:
         conn.close()

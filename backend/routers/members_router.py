@@ -1,8 +1,9 @@
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
+from asset_ops import apply_change, check_scope
 from auth import hash_password
 from db.database import db
 from db.helpers import MEMBER_COLUMNS, insert_rows, update_row, delete_rows
@@ -33,6 +34,30 @@ def update_member(member_id: int, fields: dict[str, Any], user: dict = Depends(r
     if not updated:
         raise HTTPException(404, "구성원을 찾을 수 없습니다.")
     return _public([updated])[0]
+
+
+class RetireReq(BaseModel):
+    eventDate: str | None = Field(None, pattern=r"^\d{4}-\d{2}-\d{2}$")
+
+
+@router.post("/{member_id}/retire")
+def retire(member_id: int, req: RetireReq, user: dict = Depends(require_not_viewer)):
+    # 퇴직 + 보유 자산 전부 반납(→ 보관)을 한 트랜잭션으로
+    with db(write=True) as conn:
+        row = conn.execute(f"SELECT {MEMBER_PUBLIC} FROM members WHERE id = ?", (member_id,)).fetchone()
+        if not row:
+            raise HTTPException(404, "구성원을 찾을 수 없습니다.")
+        if row["status"] == "퇴직":
+            raise HTTPException(400, "이미 퇴직 처리된 구성원입니다.")
+        if member_id == user["id"]:
+            raise HTTPException(400, "자기 자신은 퇴직 처리할 수 없습니다.")
+        check_scope(user, row["departmentId"])
+        assets = conn.execute("SELECT * FROM assets WHERE memberId = ? AND isDisposed = 0", (member_id,)).fetchall()
+        for a in assets:
+            # 다른 부서 자산이라도 퇴직자 보유분이면 반납 처리 (구성원 기준 권한은 위에서 확인)
+            apply_change(conn, user, dict(a), {"memberId": None}, req.eventDate, "퇴직 반납", scope=False)
+        conn.execute("UPDATE members SET status = '퇴직' WHERE id = ?", (member_id,))
+        return {"returned": [a["id"] for a in assets]}
 
 
 class PermissionReq(BaseModel):

@@ -1,15 +1,9 @@
 from db.database import db
 
-# ponytail: 범용 bulk 엔드포인트용 임시 화이트리스트. 3단계(서버 쓰기 API)에서 엔드포인트와 함께 제거
-ASSET_COLUMNS = [
-    "id", "legacyNo", "name", "typeId", "corporationId", "departmentId", "memberId", "location",
-    "status", "model", "serial", "manufacturedYm", "purchaseDate", "warrantyExpiry", "purchaseCost",
-    "vendor", "approvalNo", "cpu", "ram", "storage", "os", "note", "lastInspectedAt",
-    "isDisposed", "disposalMethod", "disposalReason", "disposalDate",
-]
+# ponytail: 범용 엔드포인트용 화이트리스트. 구성원(4번)·요청/실사(2·3단계) 전용 API로 바뀌면 제거
 # permission·passwordHash 제외 — 권한은 admin 전용 경로로만 변경
-MEMBER_COLUMNS = ["id", "employeeNo", "email", "name", "departmentId", "position", "status"]
-HISTORY_COLUMNS = ["assetId", "type", "fromMemberId", "toMemberId", "detail", "note", "eventDate"]
+# status도 제외 — 퇴직은 자산 반납이 따라오는 /retire로만
+MEMBER_COLUMNS = ["id", "employeeNo", "email", "name", "departmentId", "position"]
 REQUEST_COLUMNS = [
     "id", "type", "assetId", "targetMemberId", "requesterId",
     "status", "note", "resolvedNote", "resolvedDate", "date",
