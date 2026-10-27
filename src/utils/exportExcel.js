@@ -54,8 +54,8 @@ function applyColWidths(ws, widths) {
 // ── 시트 1: 자산 현황 ──
 function buildAssetSheet(assets) {
   const ws = {};
-  const statusColor = { "사용중": "D1FAE5", "미사용": "F1F5F9", "수리중": "FEE2E2" };
-  const statusTextColor = { "사용중": "065F46", "미사용": "475569", "수리중": "991B1B" };
+  const statusColor = { "사용중": "D1FAE5", "보관": "F1F5F9", "수리중": "FEE2E2" };
+  const statusTextColor = { "사용중": "065F46", "보관": "475569", "수리중": "991B1B" };
 
   // 제목
   setCell(ws, "A1", "📦 자산 현황 리포트", titleStyle);
@@ -64,12 +64,12 @@ function buildAssetSheet(assets) {
   // 요약 통계
   setCell(ws, "A4", "전체 자산", summaryLabelStyle);
   setCell(ws, "B4", "사용중", summaryLabelStyle);
-  setCell(ws, "C4", "미사용", summaryLabelStyle);
+  setCell(ws, "C4", "보관", summaryLabelStyle);
   setCell(ws, "D4", "수리중", summaryLabelStyle);
   setCell(ws, "E4", "분실", summaryLabelStyle);
   setCell(ws, "A5", assets.length, summaryValueStyle("1E40AF"));
   setCell(ws, "B5", assets.filter(a => a.status === "사용중").length, summaryValueStyle("065F46"));
-  setCell(ws, "C5", assets.filter(a => a.status === "미사용").length, summaryValueStyle("475569"));
+  setCell(ws, "C5", assets.filter(a => a.status === "보관").length, summaryValueStyle("475569"));
   setCell(ws, "D5", assets.filter(a => a.status === "수리중").length, summaryValueStyle("991B1B"));
   setCell(ws, "E5", assets.filter(a => a.status === "분실").length, summaryValueStyle("C2410C"));
 

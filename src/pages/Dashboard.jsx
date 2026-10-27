@@ -17,15 +17,7 @@ import {
   StatusBadge,
   HistoryBadge
 } from "../components/common";
-import { 
-  STATUS_OPTIONS,
-  STATUS_COLORS,
-  HISTORY_STYLES,
-  HISTORY_TYPES,
-  ROLES,
-  DEPARTMENTS,
-  C
-} from "../constants";
+import { STATUS_OPTIONS, STATUS_COLORS, C } from "../constants";
 import { displayDate } from "../utils/date";
 import { api } from "../api";
 
@@ -317,12 +309,17 @@ function CustomTooltip ({ active, payload, label }) {
 }
 
 // ── 대시보드 ──
-export default function Dashboard({ assets, members, history, permission, userDept }) {
+export default function Dashboard({ assets, members, history, departments, permission, userDept, onNavigate }) {
 
   // 폐기 자산은 집계·차트·엑셀에서 제외 (이력은 HistoryPage에 그대로 남음)
   const activeAssets = assets.filter(a => !a.isDisposed);
-  const filteredAssets = permission === "admin" ? activeAssets : activeAssets.filter(a => a.department === userDept);
-  const filteredMembers = permission === "admin" ? members : members.filter(m => m.department === userDept);
+  const filteredAssets = permission === "admin" ? activeAssets : activeAssets.filter(a => a.departmentId === userDept);
+  const activeMembers = members.filter(m => m.status === "재직");
+  const filteredMembers = permission === "admin" ? activeMembers : activeMembers.filter(m => m.departmentId === userDept);
+  // 차트 축: 자산이나 구성원이 있는 부서만 (부서 마스터가 많아져도 차트가 뭉개지지 않게)
+  const deptLabel = (d) => `${d.corporation} ${d.name}`;
+  const chartDepts = departments.filter(d =>
+    filteredAssets.some(a => a.departmentId === d.id) || filteredMembers.some(m => m.departmentId === d.id));
   const filteredHistory = permission === "admin" ? history : history.filter(h =>
     filteredAssets.some(a => a.id === h.assetId)
   );
@@ -337,11 +334,9 @@ export default function Dashboard({ assets, members, history, permission, userDe
   });
   const deptMemberData = Object.entries(deptMemberMap).map(([name, value]) => ({ name, value }));
 
-  const deptAssetData = DEPARTMENTS.map(dept => ({
-    name: dept,
-    사용중: filteredAssets.filter(a => a.department === dept && a.status === "사용중").length,
-    미사용: filteredAssets.filter(a => a.department === dept && a.status === "미사용").length,
-    수리중: filteredAssets.filter(a => a.department === dept && a.status === "수리중").length,
+  const deptAssetData = chartDepts.map(d => ({
+    name: deptLabel(d),
+    ...Object.fromEntries(STATUS_OPTIONS.map(s => [s, filteredAssets.filter(a => a.departmentId === d.id && a.status === s).length])),
   }));
 
   const today = new Date();
@@ -365,10 +360,10 @@ export default function Dashboard({ assets, members, history, permission, userDe
     return sum + (isNaN(cost) ? 0 : cost);
   }, 0);
 
-  const deptCostData = DEPARTMENTS.map(dept => ({
-    name: dept,
+  const deptCostData = chartDepts.map(d => ({
+    name: deptLabel(d),
     금액: filteredAssets
-      .filter(a => a.department === dept)
+      .filter(a => a.departmentId === d.id)
       .reduce((sum, a) => {
         const cost = Number(a.purchaseCost);
         return sum + (isNaN(cost) ? 0 : cost);
@@ -376,7 +371,7 @@ export default function Dashboard({ assets, members, history, permission, userDe
   }));
 
   const recentHistory = filteredHistory
-    .filter(h => ["배정", "반납", "입고"].includes(h.type))
+    .filter(h => ["배정", "반납", "입고", "이동"].includes(h.type))
     .slice(0, 10);
 
   return (
@@ -395,17 +390,21 @@ export default function Dashboard({ assets, members, history, permission, userDe
         <button onClick={() => exportToExcel(filteredAssets, filteredMembers, filteredHistory)} style={{ background: "#10B981", color: "#fff", border: "none", padding: "8px 16px", borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}>⬇ 엑셀 내보내기</button>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 10, flexShrink: 0 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(9, 1fr)", gap: 10, flexShrink: 0 }}>
         {[
           { label: "전체 자산", value: filteredAssets.length, color: C.primary },
-          { label: "사용중", value: filteredAssets.filter(a => a.status === "사용중").length, color: "#10B981" },
-          { label: "미사용", value: filteredAssets.filter(a => a.status === "미사용").length, color: C.textMuted },
-          { label: "수리중", value: filteredAssets.filter(a => a.status === "수리중").length, color: C.danger },
-          { label: "분실", value: filteredAssets.filter(a => a.status === "분실").length, color: "#F97316" },
+          // 미확인은 12/1까지 0건 목표 — 0이 아니면 강조, 누르면 자산 목록을 미확인 필터로
+          ...STATUS_OPTIONS.map(s => ({
+            label: s, value: filteredAssets.filter(a => a.status === s).length, color: STATUS_COLORS[s],
+            onClick: () => onNavigate("assets", null, s),
+          })),
           { label: "총 자산금액", value: `${totalCost.toLocaleString()}원`, color: "#0EA5E9" },
-          { label: "전체 구성원", value: filteredMembers.length, color: C.purple },
-        ].map(({ label, value, color }) => (
-          <div key={label} style={{ background: C.card, borderRadius: 10, padding: "12px 16px", boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}>
+          { label: "재직 구성원", value: filteredMembers.length, color: C.purple },
+        ].map(({ label, value, color, onClick }) => (
+          <div key={label} onClick={onClick}
+            style={{ background: label === "미확인" && value > 0 ? "#FAF5FF" : C.card, borderRadius: 10, padding: "12px 16px",
+              boxShadow: label === "미확인" && value > 0 ? `0 0 0 2px ${color}` : "0 1px 4px rgba(0,0,0,0.06)",
+              cursor: onClick ? "pointer" : "default" }}>
             <p style={{ margin: 0, fontSize: 11, color: C.textLight, fontWeight: 500 }}>{label}</p>
             <p style={{ margin: "4px 0 0", fontSize: 20, fontWeight: 700, color }}>{value}</p>
           </div>
@@ -460,14 +459,12 @@ export default function Dashboard({ assets, members, history, permission, userDe
                   <XAxis dataKey="name" tick={{ fontSize: 9 }} axisLine={false} tickLine={false} />
                   <YAxis allowDecimals={false} tick={{ fontSize: 10 }} axisLine={false} tickLine={false} />
                   <Tooltip content={<CustomTooltip />} cursor={{ fill: "#F1F5F9" }} />
-                  <Bar dataKey="사용중" stackId="a" fill="#10B981" name="사용중" />
-                  <Bar dataKey="미사용" stackId="a" fill="#94A3B8" name="미사용" />
-                  <Bar dataKey="수리중" stackId="a" fill="#EF4444" radius={[4, 4, 0, 0]} name="수리중" />
+                  {STATUS_OPTIONS.map(s => <Bar key={s} dataKey={s} stackId="a" fill={STATUS_COLORS[s]} name={s} />)}
                 </BarChart>
               </ResponsiveContainer>
             </div>
             <div style={{ display: "flex", justifyContent: "center", gap: 12, marginTop: 4 }}>
-              {[{ name: "사용중", color: "#10B981" }, { name: "미사용", color: "#94A3B8" }, { name: "수리중", color: "#EF4444" }].map(({ name, color }) => (
+              {STATUS_OPTIONS.map(name => ({ name, color: STATUS_COLORS[name] })).map(({ name, color }) => (
                 <div key={name} style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: C.textMuted }}><div style={{ width: 6, height: 6, borderRadius: "50%", background: color }} />{name}</div>
               ))}
             </div>
@@ -493,15 +490,15 @@ export default function Dashboard({ assets, members, history, permission, userDe
           <div style={{ background: C.card, borderRadius: 12, padding: "16px 20px", flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
             <h3 style={{ margin: "0 0 10px", fontSize: 13, fontWeight: 700 }}>알림</h3>
             <div style={{ display: "flex", flexDirection: "column", gap: 6, flex: 1, overflowY: "auto" }}>
-              {expiredAssets.map(a => (<div key={a.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 10px", background: "#FEF2F2", borderRadius: 8 }}><span style={{ fontSize: 11, fontWeight: 700, color: C.danger, background: "#FEE2E2", padding: "2px 6px", borderRadius: 4 }}>만료</span><span style={{ fontSize: 12, flex: 1 }}>{a.name}</span></div>))}
-              {warningAssets.map(a => (<div key={a.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 10px", background: "#FFF7ED", borderRadius: 8 }}><span style={{ fontSize: 11, fontWeight: 700, color: "#F97316", background: "#FFEDD5", padding: "2px 6px", borderRadius: 4 }}>임박</span><span style={{ fontSize: 12, flex: 1 }}>{a.name}</span></div>))}
+              {expiredAssets.map(a => (<div key={a.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 10px", background: "#FEF2F2", borderRadius: 8 }}><span style={{ fontSize: 11, fontWeight: 700, color: C.danger, background: "#FEE2E2", padding: "2px 6px", borderRadius: 4 }}>만료</span><span style={{ fontSize: 12, flex: 1 }}>{a.id} {a.name}</span></div>))}
+              {warningAssets.map(a => (<div key={a.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 10px", background: "#FFF7ED", borderRadius: 8 }}><span style={{ fontSize: 11, fontWeight: 700, color: "#F97316", background: "#FFEDD5", padding: "2px 6px", borderRadius: 4 }}>임박</span><span style={{ fontSize: 12, flex: 1 }}>{a.id} {a.name}</span></div>))}
             </div>
           </div>
 
           <div style={{ background: C.card, borderRadius: 12, padding: "16px 20px", flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
-            <h3 style={{ margin: "0 0 10px", fontSize: 13, fontWeight: 700 }}>최근 배정/반납 이력</h3>
+            <h3 style={{ margin: "0 0 10px", fontSize: 13, fontWeight: 700 }}>최근 입고·배정·반납·이동</h3>
             <div style={{ flex: 1, overflowY: "auto" }}>
-              {recentHistory.map(h => (<div key={h.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 0", borderBottom: `1px solid ${C.bg}` }}><HistoryBadge type={h.type} /><span style={{ fontSize: 13, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{h.assetName}</span><span style={{ fontSize: 11, color: C.textLight }}>{displayDate(h.date)}</span></div>))}
+              {recentHistory.map(h => (<div key={h.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 0", borderBottom: `1px solid ${C.bg}` }}><HistoryBadge type={h.type} /><span style={{ fontSize: 13, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{h.assetId} {h.assetName !== h.assetId ? h.assetName : ""}</span><span style={{ fontSize: 11, color: C.textLight }}>{displayDate(h.date)}</span></div>))}
             </div>
           </div>
           <div style={{ flexShrink: 0 }}><BackendMonitor permission={permission} history={filteredHistory} /></div>

@@ -3,6 +3,13 @@ import assert from "node:assert";
 import { renderToStaticMarkup } from "react-dom/server";
 import SummaryCards from "./src/components/common/SummaryCards.jsx";
 import { StatusBadge, HistoryBadge, RequestBadge, RequestStatusBadge } from "./src/components/common/Badge.jsx";
+import { enrich } from "./src/utils/enrich.js";
+import Dashboard from "./src/pages/Dashboard.jsx";
+import AssetPage from "./src/pages/AssetPage.jsx";
+import MemberPage from "./src/pages/MemberPage.jsx";
+import HistoryPage from "./src/pages/HistoryPage.jsx";
+import RequestPage from "./src/pages/RequestPage.jsx";
+import MasterPage from "./src/pages/MasterPage.jsx";
 
 const cards = renderToStaticMarkup(
   <SummaryCards items={[{ label: "전체 자산", value: 42, color: "#3B82F6" }]} />
@@ -23,4 +30,29 @@ for (const [el, expected] of cases) {
   assert.match(html, /background/, `배지 스타일 미적용: ${expected}`);
 }
 
-console.log("OK — SummaryCards + 배지 4종 렌더 정상");
+// 페이지 렌더: bootstrap 응답 모양(FK id) → enrich → 각 페이지
+const data = enrich({
+  corporations: [{ id: 1, code: "DR", name: "두래", active: 1 }],
+  departments: [{ id: 1, corporationId: 1, name: "경영지원", active: 1 }],
+  assetTypes: [{ id: 1, code: "NB", name: "노트북", hasSpecs: 1, active: 1 }],
+  members: [{ id: 1, employeeNo: "1001", name: "홍길동", departmentId: 1, position: "대리", permission: "admin", status: "재직", email: null }],
+  assets: [
+    { id: "DR-NB-0001", typeId: 1, corporationId: 1, departmentId: 1, memberId: 1, status: "사용중", name: "업무용", warrantyExpiry: "2020-01-01", purchaseDate: "2018-09", purchaseCost: 1000000, createdAt: "2026-11-01T09:00:00.000000", updatedAt: "x", isDisposed: 0 },
+    { id: "DR-NB-0002", typeId: 1, corporationId: 1, departmentId: null, memberId: null, status: "미확인", createdAt: "2026-11-01T09:00:00.000000", updatedAt: "x", isDisposed: 0 },
+  ],
+  history: [{ id: 1, assetId: "DR-NB-0001", type: "배정", fromMemberId: null, toMemberId: 1, detail: null, note: "지급", eventDate: "2023-03-02", recordedAt: "2026-11-01T09:00:00", recordedBy: 1 }],
+  requests: [{ id: 1, type: "반납요청", assetId: "DR-NB-0001", requesterId: 1, targetMemberId: null, status: "대기중", note: "반납", date: "2026-11-02" }],
+});
+assert.equal(data.assets[0].user, "홍길동");
+assert.equal(data.history[0].to, "홍길동");
+const props = { ...data, permission: "admin", userDept: 1, currentUser: data.members[0], save: async () => null, onNavigate: () => {}, onFocusCleared: () => {} };
+const pages = [
+  [Dashboard, /미확인/], [AssetPage, /DR-NB-0002/], [MemberPage, /홍길동/],
+  [HistoryPage, /지급/], [RequestPage, /반납요청/], [MasterPage, /두래/],
+];
+for (const [Page, expected] of pages) {
+  const html = renderToStaticMarkup(<Page {...props} />);
+  assert.match(html, expected, `${Page.name} 렌더 결과에 ${expected} 없음`);
+}
+
+console.log("OK — SummaryCards + 배지 4종 + 페이지 6개 렌더 정상");

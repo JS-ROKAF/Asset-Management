@@ -2,9 +2,9 @@ import React from "react";
 import bg from "../assets/login-bg.png";
 
 export default function LoginPage({
-  email,
+  employeeNo,
   password,
-  setEmail,
+  setEmployeeNo,
   setPassword,
   onLogin,
   loading,
@@ -25,13 +25,14 @@ export default function LoginPage({
 
         <div style={styles.divider} />
 
-        {/* 이메일 */}
+        {/* 사번 */}
         <div style={styles.inputWrap}>
           <input
-            type="email"
-            placeholder="Admin Email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            type="text"
+            placeholder="사번"
+            autoComplete="username"
+            value={employeeNo}
+            onChange={(e) => setEmployeeNo(e.target.value)}
             onKeyDown={e => { if (e.key === "Enter") onLogin(); }} 
             style={styles.input}
           />

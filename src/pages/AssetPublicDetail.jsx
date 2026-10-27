@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, getToken, setToken } from "../api";
+import { STATUS_STYLES } from "../constants";
 
 export default function AssetPublicDetail({ assetId }) {
   const [asset, setAsset] = useState(null);
@@ -7,10 +8,6 @@ export default function AssetPublicDetail({ assetId }) {
   const [notFound, setNotFound] = useState(false);
   const [session, setSession] = useState(null);
   const [authChecked, setAuthChecked] = useState(false);
-  const [inspectionItem, setInspectionItem] = useState(null);
-  const [activeInspectionId, setActiveInspectionId] = useState(null);
-  const [inspectionConfirmed, setInspectionConfirmed] = useState(false);
-  const [inspectionLoading, setInspectionLoading] = useState(false);
 
   // 1. 세션 확인
   useEffect(() => {
@@ -21,7 +18,8 @@ export default function AssetPublicDetail({ assetId }) {
       .finally(() => setAuthChecked(true));
   }, []);
 
-  // 2. 로그인 됐을 때만 자산 조회 + 진행중 실사 확인
+  // 2. 로그인 됐을 때만 자산 조회
+  // ponytail: QR 실사 체크는 2단계(설계안 4-3) 실사 흐름 재설계 때 다시 붙인다
   useEffect(() => {
     if (!session) return;
 
@@ -35,31 +33,10 @@ export default function AssetPublicDetail({ assetId }) {
       if (!assetData) { setNotFound(true); setLoading(false); return; }
       setAsset(assetData);
 
-      const ins = await api.inspections.current().catch(() => null);
-      if (ins) {
-        setActiveInspectionId(ins.id);
-        const items = await api.inspections.items({ inspectionId: ins.id, assetId }).catch(() => []);
-        if (items && items[0]) setInspectionItem(items[0]);
-      }
       setLoading(false);
     };
     load();
   }, [session, assetId]);
-
-  const confirmInspectionItem = async (status) => {
-    if (!inspectionItem) return;
-    setInspectionLoading(true);
-    const kst = new Date().toLocaleString("sv-SE", { timeZone: "Asia/Seoul" });
-    const updated = { ...inspectionItem, status, confirmedBy: session.email, confirmedDate: kst };
-    try {
-      await api.inspections.updateItem(inspectionItem.id, updated);
-    } catch (e) {
-      alert("확인 실패: " + e.message); setInspectionLoading(false); return;
-    }
-    setInspectionItem(updated);
-    setInspectionConfirmed(true);
-    setInspectionLoading(false);
-  };
 
   // 인증 확인 중
   if (!authChecked) return (
@@ -90,22 +67,18 @@ export default function AssetPublicDetail({ assetId }) {
     </div>
   );
 
-  const statusColor = {
-    "사용중": { bg: "#DCFCE7", text: "#16A34A" },
-    "보관중": { bg: "#DBEAFE", text: "#2563EB" },
-    "수리중": { bg: "#FEF9C3", text: "#CA8A04" },
-    "폐기":   { bg: "#FEE2E2", text: "#DC2626" },
-  };
-  const sc = statusColor[asset.status] || { bg: "#F1F5F9", text: "#64748B" };
+  const sc = STATUS_STYLES[asset.status] || { background: "#F1F5F9", color: "#64748B" };
 
   const rows = [
     ["자산번호",  asset.id],
+    ["구자산번호", asset.legacyNo],
+    ["법인",      asset.corporationCode],
     ["모델명",    asset.model],
     ["시리얼",    asset.serial],
-    ["유형",      asset.type],
-    ["부서",      asset.department],
+    ["유형",      asset.typeName],
+    ["부서",      asset.departmentName],
     ["위치",      asset.location],
-    ["사용자",    asset.user],
+    ["사용자",    asset.memberName],
     ["구매일",    asset.purchaseDate],
     ["구매금액",  asset.purchaseCost ? Number(asset.purchaseCost).toLocaleString() + "원" : null],
     ["공급업체",  asset.vendor],
@@ -117,9 +90,9 @@ export default function AssetPublicDetail({ assetId }) {
     <div style={styles.page}>
       <div style={styles.card}>
         <div style={styles.header}>
-          <p style={styles.typeLabel}>{asset.type || "기타"}</p>
-          <h1 style={styles.title}>{asset.name}</h1>
-          <span style={{ ...styles.badge, background: sc.bg, color: sc.text }}>
+          <p style={styles.typeLabel}>{asset.typeName}</p>
+          <h1 style={styles.title}>{asset.name || asset.id}</h1>
+          <span style={{ ...styles.badge, ...sc }}>
             {asset.status || "상태 미지정"}
           </span>
         </div>
@@ -134,44 +107,8 @@ export default function AssetPublicDetail({ assetId }) {
             ) : null
           )}
         </div>
-        {/* 실사 체크 섹션 */}
-        {inspectionItem && activeInspectionId && (
-          inspectionItem.status === "미확인" && !inspectionConfirmed ? (
-            <div style={{ padding: "16px 24px", borderTop: "1px solid #F1F5F9", background: "#FFFBEB" }}>
-              <p style={{ margin: "0 0 12px", fontSize: 13, fontWeight: 700, color: "#92400E" }}>
-                📋 실사 진행중 — 이 자산의 보유 상태를 확인해 주세요
-              </p>
-              <div style={{ display: "flex", gap: 8 }}>
-                <button
-                  onClick={() => confirmInspectionItem("보유중")}
-                  disabled={inspectionLoading}
-                  style={{ flex: 1, padding: "11px 0", background: "#D1FAE5", color: "#065F46", border: "none", borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: inspectionLoading ? "not-allowed" : "pointer" }}>
-                  ✅ 보유중
-                </button>
-                <button
-                  onClick={() => confirmInspectionItem("없음")}
-                  disabled={inspectionLoading}
-                  style={{ flex: 1, padding: "11px 0", background: "#FEE2E2", color: "#991B1B", border: "none", borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: inspectionLoading ? "not-allowed" : "pointer" }}>
-                  ❌ 없음
-                </button>
-                <button
-                  onClick={() => confirmInspectionItem("분실")}
-                  disabled={inspectionLoading}
-                  style={{ flex: 1, padding: "11px 0", background: "#FFF7ED", color: "#C2410C", border: "none", borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: inspectionLoading ? "not-allowed" : "pointer" }}>
-                  🔍 분실
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div style={{ padding: "12px 24px", borderTop: "1px solid #F1F5F9", background: "#F0FDF4", display: "flex", alignItems: "center", gap: 8 }}>
-              <span style={{ fontSize: 13, color: "#16A34A", fontWeight: 600 }}>
-                ✅ 실사 확인 완료 — {inspectionItem.status}
-              </span>
-            </div>
-          )
-        )}
         <div style={styles.footer}>
-          <p style={{ margin: 0, fontSize: 11, color: "#CBD5E1" }}>📅 등록일: {asset.date || "-"}</p>
+          <p style={{ margin: 0, fontSize: 11, color: "#CBD5E1" }}>📅 등록일: {asset.createdAt?.slice(0, 10) || "-"}</p>
         </div>
       </div>
     </div>
@@ -180,7 +117,7 @@ export default function AssetPublicDetail({ assetId }) {
 
 // 로그인 유도 컴포넌트
 function LoginRedirect({ onLogin }) {
-  const [email, setEmail] = useState("");
+  const [employeeNo, setEmployeeNo] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -190,11 +127,11 @@ function LoginRedirect({ onLogin }) {
     setLoading(true);
     setError("");
     try {
-      const data = await api.login(email, password);
+      const data = await api.login(employeeNo, password);
       setToken(data.token);
       onLogin(data.member);
-    } catch {
-      setError("이메일 또는 비밀번호가 올바르지 않습니다.");
+    } catch (err) {
+      setError(err.message);
     } finally {
       setLoading(false);
     }
@@ -208,8 +145,8 @@ function LoginRedirect({ onLogin }) {
         {error && <p style={{ color: "#DC2626", fontSize: 13, marginBottom: 12 }}>{error}</p>}
         <form onSubmit={handleLogin} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           <input
-            type="email" placeholder="이메일" value={email}
-            onChange={e => setEmail(e.target.value)}
+            type="text" placeholder="사번" value={employeeNo} autoComplete="username"
+            onChange={e => setEmployeeNo(e.target.value)}
             style={styles.input}
           />
           <input

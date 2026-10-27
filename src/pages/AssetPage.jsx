@@ -1,13 +1,7 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import { api } from "../api";
-import {
-  DEPARTMENTS,
-  STATUS_OPTIONS,
-  ASSET_TYPES,
-  C
-} from "../constants";
-import { makeHistory } from "../utils/history";
-import { displayDate, displayAge, toKST } from "../utils/date";
+import { STATUS_OPTIONS, STATUS_COLORS, C } from "../constants";
+import { displayDate, displayAge } from "../utils/date";
 import { displayUser } from "../utils/user";
 import useSort from "../hooks/useSort";
 import {
@@ -15,6 +9,7 @@ import {
   Modal,
   InputField,
   SelectField,
+  MemberSelect,
   Field,
   PageHeader,
   SummaryCards,
@@ -24,318 +19,259 @@ import {
   Pagination
 } from "../components/common";
 import SortableTable from "../components/SortableTable";
-import * as XLSX from "xlsx";
 import { QRCodeSVG } from "qrcode.react";
 
-// ── 자산관리 ──
-export default function AssetPage({ assets, setAssets, history, members, permission, userDept, requests, setRequests, currentUser, focusAssetId, onFocusCleared }) {
-  // 부서장/뷰어면 자기 부서 자산만
-  const visibleAssets = (permission === "admin" ? assets : assets.filter(a => a.department === userDept))
-    .filter(a => !a.isDisposed);
-  const [addOpen, setAddOpen] = useState(false);
-  const [form, setForm] = useState({
-    name: "", type: "기타", location: "", user: "",
-    purchaseDate: "", purchaseCost: "", vendor: "",
-    department: "", note: "", quantity: 1,
-    model: "", serial: "", warrantyExpiry: "",
+// ── 폼 ↔ 저장값 변환 ──
+// 폼은 입력칸 문자열을 그대로 들고 있고, 저장 직전에 서버 형식(id는 number, 빈 칸은 null)으로 바꾼다
+const EMPTY_FORM = {
+  name: "", corporationId: "", typeId: "", departmentId: "", memberId: null, location: "", status: "보관",
+  legacyNo: "", model: "", serial: "", manufacturedYm: "", purchaseDate: "", purchaseCost: "",
+  vendor: "", approvalNo: "", warrantyExpiry: "", cpu: "", ram: "", storage: "", os: "", note: "",
+};
+const ID_KEYS = ["corporationId", "typeId", "departmentId"];
+const SPEC_KEYS = ["cpu", "ram", "storage", "os"];
+
+const toPayload = (form) => Object.fromEntries(Object.keys(EMPTY_FORM).map(k => {
+  const v = form[k];
+  if (k === "memberId") return [k, v];
+  if (ID_KEYS.includes(k) || k === "purchaseCost") return [k, v === "" || v == null ? null : Number(v)];
+  return [k, typeof v === "string" ? (v.trim() || null) : v];
+}));
+const fromAsset = (a) => Object.fromEntries(Object.keys(EMPTY_FORM).map(k =>
+  [k, k === "memberId" ? a.memberId : a[k] == null ? "" : String(a[k])]
+));
+
+// 저장 전 검사. 문제 있으면 메시지, 없으면 null
+const validate = (form) => {
+  if (!form.corporationId || !form.typeId) return "법인과 유형은 필수입니다.";
+  if (form.memberId === undefined) return "사용자를 목록에서 선택해 주세요.";
+  if (form.status === "사용중" && form.memberId == null) return "사용중 상태는 사용자가 필요합니다.";
+  if (form.purchaseDate && !/^\d{4}-\d{2}(-\d{2})?$/.test(form.purchaseDate.trim())) return "취득일자는 YYYY-MM 또는 YYYY-MM-DD 형식입니다.";
+  return null;
+};
+
+const today = new Date();
+today.setHours(0, 0, 0, 0);
+const thirtyDaysLater = new Date(today.getTime() + 30 * 24 * 60 * 60 * 1000);
+const getWarrantyStatus = (warrantyExpiry) => {
+  if (!warrantyExpiry) return null;
+  const expiry = new Date(warrantyExpiry.slice(0, 10));
+  if (expiry < today) return "expired";
+  if (expiry <= thirtyDaysLater) return "warning";
+  return null;
+};
+
+const textareaStyle = {
+  border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 12px",
+  fontSize: 14, color: C.text, outline: "none", resize: "vertical", fontFamily: "inherit",
+};
+
+// ── 등록·수정 공통 입력 폼 ──
+function AssetForm({ form, setForm, corporations, departments, assetTypes, members, isCreate, quantity }) {
+  const set = (k) => (v) => setForm({ ...form, [k]: v });
+  const type = assetTypes.find(t => String(t.id) === form.typeId);
+  const activeOpt = (rows, label) => [{ value: "", label: "선택해 주세요" },
+    ...rows.filter(r => r.active || String(r.id) === form[label]).map(r => ({ value: String(r.id), label: r.code ? `${r.code} · ${r.name}` : `${r.corporation} · ${r.name}` }))];
+
+  // 상태–사용자 연동: 사용자를 고르면 사용중, 사용중이 아닌 상태를 고르면 사용자 해제
+  const setStatus = (s) => setForm({ ...form, status: s, memberId: s === "사용중" ? form.memberId : null });
+  const setMember = (m) => setForm({
+    ...form, memberId: m,
+    status: m != null ? "사용중" : form.status === "사용중" ? "보관" : form.status,
   });
-  const [selected, setSelected] = useState(null);
-  const [editMode, setEditMode] = useState(false);
-  const [editForm, setEditForm] = useState({});
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
+        <SelectField label="법인 *" value={form.corporationId} onChange={set("corporationId")}
+          options={activeOpt(corporations, "corporationId")} disabled={!isCreate} />
+        <SelectField label="유형 *" value={form.typeId} onChange={set("typeId")}
+          options={activeOpt(assetTypes, "typeId")} />
+        <InputField label="자산명" value={form.name} onChange={set("name")} />
+      </div>
+      {!isCreate && (
+        <p style={{ margin: "-6px 0 0", fontSize: 12, color: C.textLight }}>자산번호는 최초 등록 기준이라 법인·유형을 바꿔도 번호는 그대로입니다.</p>
+      )}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+        <SelectField label="사용부서" value={form.departmentId} onChange={set("departmentId")}
+          options={[{ value: "", label: "미지정" }, ...activeOpt(departments, "departmentId").slice(1)]} />
+        <InputField label="위치" value={form.location} onChange={set("location")} />
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+        <SelectField label="상태" value={form.status} onChange={setStatus} options={STATUS_OPTIONS} />
+        <MemberSelect value={form.memberId} onChange={setMember} members={members} disabled={quantity > 1}
+          label={quantity > 1 ? "사용자 (수량 2개 이상은 등록 후 개별 배정)" : "사용자"} />
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
+        <InputField label="모델명" value={form.model} onChange={set("model")} />
+        <InputField label="시리얼 넘버" value={form.serial} onChange={set("serial")} />
+        <InputField label="제조년월" value={form.manufacturedYm} type="month" onChange={set("manufacturedYm")} />
+      </div>
+      {type?.hasSpecs ? (
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 12 }}>
+          <InputField label="CPU" value={form.cpu} onChange={set("cpu")} />
+          <InputField label="RAM" value={form.ram} onChange={set("ram")} />
+          <InputField label="저장장치" value={form.storage} onChange={set("storage")} />
+          <InputField label="OS" value={form.os} onChange={set("os")} />
+        </div>
+      ) : null}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
+        <InputField label="취득일자" value={form.purchaseDate} placeholder="YYYY-MM 또는 YYYY-MM-DD" onChange={set("purchaseDate")} />
+        <InputField label="취득금액 (원)" value={form.purchaseCost} type="number" onChange={set("purchaseCost")} />
+        <InputField label="보증 만료일" value={form.warrantyExpiry} type="date" onChange={set("warrantyExpiry")} />
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
+        <InputField label="구입처" value={form.vendor} onChange={set("vendor")} />
+        <InputField label="구매품의번호" value={form.approvalNo} onChange={set("approvalNo")} />
+        <InputField label="구자산번호" value={form.legacyNo} onChange={set("legacyNo")} />
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        <label style={{ fontSize: 12, color: C.textMuted, fontWeight: 600 }}>비고</label>
+        <textarea value={form.note} onChange={e => set("note")(e.target.value)} rows={2} style={textareaStyle} />
+      </div>
+    </div>
+  );
+}
+
+// 발생일 + 이력 메모 (이력에 남는 값)
+function EventFields({ value, onChange }) {
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: 12, background: C.bg, borderRadius: 10, padding: 12 }}>
+      <InputField label="발생일 (비우면 오늘)" value={value.eventDate} type="date" onChange={v => onChange({ ...value, eventDate: v })} />
+      <InputField label="이력 메모" value={value.memo} onChange={v => onChange({ ...value, memo: v })} placeholder="이력에 함께 기록됩니다" />
+    </div>
+  );
+}
+const EMPTY_EVENT = { eventDate: "", memo: "" };
+const eventPayload = (ev) => ({ eventDate: ev.eventDate || null, memo: ev.memo.trim() || null });
+
+// ── 자산관리 ──
+export default function AssetPage({ assets, history, members, corporations, departments, assetTypes, permission, userDept, currentUser, save, focusAssetId, onFocusCleared, initialStatus }) {
+  // 부서장/뷰어면 자기 부서 자산만
+  const visibleAssets = (permission === "admin" ? assets : assets.filter(a => a.departmentId === userDept))
+    .filter(a => !a.isDisposed);
+  const masters = { corporations, departments, assetTypes, members };
+
+  const [addOpen, setAddOpen] = useState(false);
+  const [form, setForm] = useState(EMPTY_FORM);
+  const [quantity, setQuantity] = useState(1);
+  const [manualId, setManualId] = useState("");
+  const [addEvent, setAddEvent] = useState(EMPTY_EVENT);
+
+  const [selectedId, setSelectedId] = useState(null);
+  const selected = assets.find(a => a.id === selectedId) || null;   // 저장 후 재조회되면 자동으로 최신값
+  const [editBase, setEditBase] = useState(null);                    // 수정 시작 시점 스냅샷 (updatedAt 충돌 검사용)
+  const [editForm, setEditForm] = useState(EMPTY_FORM);
+  const [editEvent, setEditEvent] = useState(EMPTY_EVENT);
+  const [repair, setRepair] = useState({ vendor: "", cost: "", content: "", dueDate: "" });
+
   const [search, setSearch] = useState("");
-  const [filterStatus, setFilterStatus] = useState("전체");
-  const [filterDept, setFilterDept] = useState("전체");
-  const [filterType, setFilterType] = useState("전체");
+  const [filterStatus, setFilterStatus] = useState(initialStatus || "전체");
+  const [filterDept, setFilterDept] = useState("");
+  const [filterType, setFilterType] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const PER_PAGE = 15;
-  const memberNames = members.map(m => m.name);
-  const [selectedIds, setSelectedIds] = useState([]); // 선택된 자산 id 목록
-  const [bulkOpen, setBulkOpen] = useState(false);     // 일괄 배정 모달
-  const [bulkUser, setBulkUser] = useState("");         // 일괄 배정할 사용자  
-  const [bulkStatusOpen, setBulkStatusOpen] = useState(false);
+  const [selectedIds, setSelectedIds] = useState([]);
+  const [bulkMode, setBulkMode] = useState(null);   // "assign" | "status" | "move"
+  const [bulkMember, setBulkMember] = useState(null);
   const [bulkStatus, setBulkStatus] = useState("수리중");
-  const [importOpen, setImportOpen] = useState(false);   // 가져오기 모달
-  const [importData, setImportData] = useState([]);       // 파싱된 데이터
-  const [importError, setImportError] = useState("");     // 오류 메시지
-  const [importGuideOpen, setImportGuideOpen] = useState(false);
+  const [bulkMove, setBulkMove] = useState({ departmentId: "", location: "" });
   const [showQR, setShowQR] = useState(false);
   const [disposeOpen, setDisposeOpen] = useState(false);
   const [disposeForm, setDisposeForm] = useState({ reason: "", method: "폐기" });
-  const fileInputRef = useRef(null);
-  
-  
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const thirtyDaysLater = new Date(today.getTime() + 30 * 24 * 60 * 60 * 1000);
-
-  const getWarrantyStatus = (warrantyExpiry) => {
-    if (!warrantyExpiry || warrantyExpiry === "-") return null;
-    const expiry = new Date(warrantyExpiry.slice(0, 10));
-    if (expiry < today) return "expired";
-    if (expiry <= thirtyDaysLater) return "warning";
-    return null;
-  };
 
   useEffect(() => { setCurrentPage(1); }, [search, filterStatus, filterDept, filterType]);
   useEffect(() => {
     if (focusAssetId) {
-      const asset = assets.find(a => a.id === focusAssetId);
-      if (asset) {
-        setSelected(asset);
-        setEditMode(false);
-      }
+      if (assets.some(a => a.id === focusAssetId)) setSelectedId(focusAssetId);
       onFocusCleared();
     }
   }, [focusAssetId, assets]);
 
-  const base = visibleAssets.filter(a => {
-  const matchStatus = filterStatus === "전체" || a.status === filterStatus;
-  const matchDept = filterDept === "전체" || a.department === filterDept;
-  const matchType = filterType === "전체" || a.type === filterType;
-  const matchSearch = [a.id, a.name, a.user, a.location, a.department, a.vendor, a.note]
-    .some(v => v?.toLowerCase().includes(search.toLowerCase()));
-  return matchStatus && matchDept && matchType && matchSearch;
-  });
+  const q = search.toLowerCase();
+  const base = visibleAssets.filter(a =>
+    (filterStatus === "전체" || a.status === filterStatus) &&
+    (!filterDept || String(a.departmentId) === filterDept) &&
+    (!filterType || String(a.typeId) === filterType) &&
+    [a.id, a.legacyNo, a.name, a.user, a.location, a.department, a.model, a.serial, a.vendor, a.note]
+      .some(v => v?.toLowerCase().includes(q))
+  );
   const { sorted, sortKey, sortDir, handleSort } = useSort(base, "date");
   const totalFiltered = sorted.length;
   const filtered = sorted.slice((currentPage - 1) * PER_PAGE, currentPage * PER_PAGE);
 
-  const handleImportFile = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    setImportError("");
+  const openDetail = (a) => { setSelectedId(a.id); setEditBase(null); };
 
-    const reader = new FileReader();
-    reader.onload = (evt) => {
-      try {
-        const wb = XLSX.read(evt.target.result, { type: "binary" });
-        const ws = wb.Sheets[wb.SheetNames[0]];
-        const rows = XLSX.utils.sheet_to_json(ws, { defval: "" });
-
-        if (rows.length === 0) {
-          setImportError("데이터가 없습니다. 엑셀 파일을 확인해 주세요.");
-          return;
-        }
-
-        // 필수 컬럼 확인
-        const required = ["자산명", "유형", "위치"];
-        const headers = Object.keys(rows[0]);
-        const missing = required.filter(r => !headers.includes(r));
-        if (missing.length > 0) {
-          setImportError(`필수 컬럼이 없습니다: ${missing.join(", ")}`);
-          return;
-        }
-
-        // 데이터 변환
-        const parsed = rows.map((row, i) => ({
-          name: String(row["자산명"] || ""),
-          type: String(row["유형"] || "기타"),
-          status: "미사용",
-          user: "-",
-          department: String(row["사용부서"] || "-"),
-          location: String(row["위치"] || "-"),
-          purchaseDate: row["취득일자"] ? String(row["취득일자"]) : "-",
-          purchaseCost: row["취득금액"] ? String(row["취득금액"]) : "-",
-          vendor: String(row["구입처"] || "-"),
-          model: String(row["모델명"] || "-"),
-          serial: String(row["시리얼넘버"] || "-"),
-          warrantyExpiry: row["보증만료일"] ? String(row["보증만료일"]) : "-",
-          note: String(row["비고"] || "-"),
-          date: toKST(i),
-        }));
-
-        setImportData(parsed);
-        setImportGuideOpen(false);
-        setImportOpen(true);
-      } catch {
-        setImportError("파일을 읽는 중 오류가 발생했습니다.");
-      }
-    };
-    reader.readAsBinaryString(file);
-    // 같은 파일 재업로드 가능하도록 초기화
-    e.target.value = "";
-  };
-
-  const handleImportConfirm = () => {
-    if (importData.length === 0) return;
-
-    // 시리얼 중복 체크
-    const duplicates = importData.filter(a =>
-      a.serial && a.serial !== "-" &&
-      assets.find(existing => existing.serial === a.serial)
-    );
-    if (duplicates.length > 0) {
-      alert(`중복된 시리얼 넘버가 있습니다:\n${duplicates.map(a => `${a.name} (${a.serial})`).join("\n")}`);
-      return;
-    }
-
-    const histories = importData.map((a, i) =>
-      makeHistory("입고", a, "-", "-", "엑셀 일괄 입고", i)
-    );
-    setAssets([...assets, ...importData], histories);
-    setImportData([]);
-    setImportOpen(false);
-  };
-
-  const addAsset = () => {
-    if (!form.name || !form.location) return;
-
-     // 시리얼 넘버 중복 체크
-    if (form.serial && form.serial !== "") {
-      const duplicate = assets.find(a => a.serial === form.serial && a.serial !== "-");
-      if (duplicate) {
-        alert(`시리얼 넘버 '${form.serial}'는 이미 등록된 자산(${duplicate.name})에 사용 중입니다.`);
-        return;
-      }
-    }
-
-    const qty = Math.max(1, parseInt(form.quantity) || 1);
-    const isAssigned = form.user && form.user !== "";
-    if (isAssigned && !memberNames.includes(form.user)) {
-      alert(`'${form.user}'은(는) 구성원 목록에 없는 사용자입니다.`);
-      return;
-    }
-    // 수량이 2 이상인데 사용자를 지정하면 경고
-    if (qty > 1 && isAssigned) {
-      alert("수량이 2개 이상일 때는 사용자를 지정할 수 없습니다.\n등록 후 각 자산에 개별 배정해 주세요.");
-      return;
-    }
-
-    const newAssets = [];
-    const histories = [];
-
-    for (let i = 0; i < qty; i++) {
-      const newAsset = {
-        id: "A" + Date.now() + i,
-        name: form.name,
-        type: form.type || "기타",
-        status: isAssigned ? "사용중" : "미사용",
-        user: isAssigned ? form.user : "-",
-        department: form.department || "-",
-        location: form.location,
-        purchaseDate: form.purchaseDate ? `${form.purchaseDate} ${toKST().slice(11, 19)}` : "-",
-        purchaseCost: form.purchaseCost || "-",
-        vendor: form.vendor || "-",
-        model: form.model || "-",
-        serial: form.serial || "-",
-        warrantyExpiry: form.warrantyExpiry || "-",
-        note: form.note || "-",
-        date: toKST(i),
-      };
-      newAssets.push(newAsset);
-      histories.push(makeHistory("입고", newAsset, "-", "-", `신규 자산 시스템 입고${qty > 1 ? ` (${i + 1}/${qty})` : ""}`, i * 2));
-      if (isAssigned) {
-        histories.push(makeHistory("배정", newAsset, "-", form.user, "신규 등록 시 즉시 배정", i * 2 + 1));
-      }
-    }
-
-    setAssets([...assets, ...newAssets], histories);
+  const addAsset = async () => {
+    const err = validate(form);
+    if (err) return alert(err);
+    const fields = toPayload(form);
+    if (!assetTypes.find(t => t.id === fields.typeId)?.hasSpecs) SPEC_KEYS.forEach(k => delete fields[k]);
+    const created = await save(() => api.assets.create({
+      fields, quantity, id: manualId.trim() || null, ...eventPayload(addEvent),
+    }));
+    if (!created) return;
+    alert(`등록되었습니다: ${created.map(a => a.id).join(", ")}`);
     setAddOpen(false);
-    setForm({
-      name: "", type: "기타", location: "", user: "",
-      purchaseDate: "", purchaseCost: "", vendor: "",
-      department: "", note: "", quantity: 1,
-      model: "", serial: "", warrantyExpiry: "",
-    });
+    setForm(EMPTY_FORM);
+    setQuantity(1);
+    setManualId("");
+    setAddEvent(EMPTY_EVENT);
   };
 
-  const saveEdit = () => {
-    const prev = assets.find(a => a.id === editForm.id);
-
-    // 시리얼 넘버 중복 체크 (자기 자신 제외)
-    if (editForm.serial && editForm.serial !== "" && editForm.serial !== "-") {
-      const duplicate = assets.find(a => a.serial === editForm.serial && a.id !== editForm.id && a.serial !== "-");
-      if (duplicate) {
-        alert(`시리얼 넘버 '${editForm.serial}'는 이미 등록된 자산(${duplicate.name})에 사용 중입니다.`);
-        return;
-      }
-    }
-
-    let updated = { ...editForm };
-    const histories = [];
-
-    const userChanged = prev.user !== updated.user;
-    const statusChanged = prev.status !== updated.status;
-
-    if (updated.user && updated.user !== "-" && updated.user !== "미배정" && !memberNames.includes(updated.user)) {
-      alert(`'${updated.user}'은(는) 구성원 목록에 없는 사용자입니다.\n구성원 관리에서 먼저 등록해주세요.`);
-      return;
-    }
-
-    if (updated.status === "미사용" && updated.user !== "-" && updated.user !== "미배정") {
-      const prevUser = updated.user;
-      updated.user = "-";
-      histories.push(makeHistory("반납", updated, prevUser, "-", "미사용 처리로 인한 자동 반납"));
-    } else if (updated.status === "수리중" && updated.user !== "-" && updated.user !== "미배정") {
-      const prevUser = updated.user;
-      updated.user = "-";
-      histories.push(makeHistory("반납", updated, prevUser, "-", "수리 입고로 인한 자동 반납", 0));
-      histories.push(makeHistory("상태변경", updated, "-", "-", buildRepairNote(editForm), 1));
-    } else if (updated.status === "분실" && updated.user !== "-" && updated.user !== "미배정") {
-      const prevUser = updated.user;
-      updated.user = "-";
-      histories.push(makeHistory("반납", updated, prevUser, "-", "분실 처리로 인한 자동 반납"));
-    } else if (userChanged && updated.status !== "미사용" && updated.status !== "수리중") {
-      if (prev.user === "-" && updated.user !== "-") {
-        histories.push(makeHistory("배정", updated, "-", updated.user, `${updated.user}에게 배정`));
-      } else if (prev.user !== "-" && updated.user === "-") {
-        histories.push(makeHistory("반납", updated, prev.user, "-", "사용자 반납 처리"));
-      } else if (prev.user !== "-" && updated.user !== "-") {
-        histories.push(makeHistory("반납", updated, prev.user, "-", `${prev.user} → ${updated.user} 사용자 변경`, 0));
-        histories.push(makeHistory("배정", updated, "-", updated.user, `${prev.user}에서 ${updated.user}으로 재배정`, 1));
-      }
-    } else if (statusChanged && !userChanged) {
-      const note = updated.status === "수리중" && prev.status !== "수리중"
-        ? buildRepairNote(editForm)
-        : `${prev.status} → ${updated.status}`;
-      histories.push(makeHistory("상태변경", updated, updated.user, updated.user, note));
-    }
-
-    // repair 임시 필드는 DB에 저장하지 않음
-    const { repairVendor, repairCost, repairDetail, repairExpectedDate, ...assetToSave } = updated;
-    setAssets(assets.map(a => a.id === assetToSave.id ? assetToSave : a), histories);
-    setSelected(assetToSave);
-    setEditMode(false);
+  const startEdit = () => {
+    setEditBase(selected);
+    setEditForm(fromAsset(selected));
+    setEditEvent(EMPTY_EVENT);
+    setRepair({ vendor: "", cost: "", content: "", dueDate: "" });
   };
 
-  const buildRepairNote = (form) => {
-    const parts = ["수리 접수"];
-    if (form.repairVendor) parts.push(`업체: ${form.repairVendor}`);
-    if (form.repairCost) parts.push(`비용: ${Number(form.repairCost).toLocaleString()}원`);
-    if (form.repairDetail) parts.push(`내용: ${form.repairDetail}`);
-    if (form.repairExpectedDate) parts.push(`완료예정: ${form.repairExpectedDate}`);
-    return parts.join(" | ");
+  const saveEdit = async () => {
+    const err = validate(editForm);
+    if (err) return alert(err);
+    const before = toPayload(fromAsset(editBase));
+    const after = toPayload(editForm);
+    const fields = Object.fromEntries(Object.entries(after).filter(([k, v]) => before[k] !== v));
+    if (Object.keys(fields).length === 0) { setEditBase(null); return; }
+    const toRepair = fields.status === "수리중";
+    const ok = await save(() => api.assets.update(editBase.id, {
+      fields, updatedAt: editBase.updatedAt, ...eventPayload(editEvent),
+      repair: toRepair ? repair : null,
+    }));
+    if (ok) setEditBase(null);
   };
 
-  const disposeAsset = () => {
+  const disposeAsset = async () => {
     if (!disposeForm.reason.trim()) { alert("폐기 사유를 입력해 주세요."); return; }
-    const histories = [];
-    if (selected.user && selected.user !== "-") {
-      histories.push(makeHistory("반납", selected, selected.user, "-", "폐기 처리로 인한 자동 반납", 0));
-    }
-    const noteText = `[${disposeForm.method}] ${disposeForm.reason}`;
-    histories.push(makeHistory("폐기", selected, selected.user ?? "-", "-", noteText, selected.user && selected.user !== "-" ? 1 : 0));
-    const disposed = {
-      ...selected,
-      isDisposed: true,
-      // status는 폐기 시점 상태(분실·수리중 등)를 감사용으로 보존 — 목록 제외는 isDisposed가 담당
-      user: "-",
-      disposalReason: disposeForm.reason,
-      disposalMethod: disposeForm.method,
-      disposalDate: toKST(),
-    };
-    setAssets(assets.map(a => a.id === selected.id ? disposed : a), histories);
+    const ok = await save(() => api.assets.dispose(selected.id, disposeForm.method, disposeForm.reason.trim()));
+    if (!ok) return;
     setDisposeOpen(false);
     setDisposeForm({ reason: "", method: "폐기" });
-    setSelected(null);
+    setSelectedId(null);
+  };
+
+  const runBulk = async (ids, fields, memo) => {
+    const ok = await save(() => api.assets.bulk(ids, fields, memo));
+    if (!ok) return;
+    setBulkMode(null);
+    setSelectedIds([]);
+    alert(`${ids.length}개 자산이 처리되었습니다.`);
+  };
+
+  const requestReturn = async () => {
+    if (!window.confirm(`'${selected.name}' 반납을 요청할까요?`)) return;
+    const ok = await save(() => api.requests.create("반납요청", selected.id, "반납 요청"));
+    if (ok) { alert("반납 요청이 접수되었습니다."); setSelectedId(null); }
   };
 
   const assetHistory = selected
-    ? history.filter(h => h.assetId === selected.id).sort((a, b) => a.date.localeCompare(b.date))
+    ? history.filter(h => h.assetId === selected.id)
+        .sort((a, b) => a.date.localeCompare(b.date) || a.id - b.id)
     : [];
 
   const ASSET_HEADERS = [
-    { label: "자산번호", key: "id", width: 100 },
+    { label: "자산번호", key: "id", width: 110 },
+    { label: "구번호", key: "legacyNo" },
     { label: "자산명", key: "name" },
     { label: "유형", key: "type" },
     { label: "상태", key: "status" },
@@ -345,355 +281,164 @@ export default function AssetPage({ assets, setAssets, history, members, permiss
     { label: "보증만료일", key: "warrantyExpiry" },
     { label: "취득일자", key: "purchaseDate" },
     { label: "취득금액", key: "purchaseCost" },
-    { label: "구입처", key: "vendor" },
     { label: "비고", key: "note" },
     { label: "등록일", key: "date" },
   ];
 
-  // 2단 필터 (상태 + 부서)
-  const deptFilterRow = (
-    <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
-      {["전체", ...DEPARTMENTS].map(d => (
-        <button key={d} onClick={() => setFilterDept(d)}
-          style={{ padding: "9px 16px", borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: "pointer",
-            border: `1px solid ${C.border}`,
-            background: filterDept === d ? C.purple : C.card,
-            color: filterDept === d ? "#fff" : C.textMuted, transition: "all 0.15s" }}>
-          {d}
-        </button>
-      ))}
-    </div>
+  const filterSelect = (value, onChange, options, label) => (
+    <select value={value} onChange={e => onChange(e.target.value)}
+      style={{ border: `1px solid ${C.border}`, borderRadius: 8, padding: "9px 12px", fontSize: 13, color: C.textMuted, outline: "none", background: C.card, cursor: "pointer" }}>
+      <option value="">{label} 전체</option>
+      {options.map(o => <option key={o.id} value={String(o.id)}>{o.corporation ? `${o.corporation} · ${o.name}` : o.name}</option>)}
+    </select>
   );
+
+  const td = { padding: "10px 12px", fontSize: 14, color: C.text, whiteSpace: "nowrap" };
+  const selectedType = selected && assetTypes.find(t => t.id === selected.typeId);
 
   return (
     <main style={{ flex: 1, padding: "36px 40px", overflowY: "auto" }}>
       <PageHeader title="자산 관리" subtitle="등록된 IT 기기를 한눈에 확인하세요"
-        action={
-          permission !== "viewer" ? (
-            <div style={{ display: "flex", gap: 8 }}>
-              <input
-                type="file"
-                accept=".xlsx,.xls"
-                ref={fileInputRef}
-                onChange={handleImportFile}
-                style={{ display: "none" }}
-              />
-              <Btn variant="ghost" onClick={() => setImportGuideOpen(true)}>⬆ 엑셀 가져오기</Btn>
-              <Btn onClick={() => setAddOpen(true)}>+ 자산 등록</Btn>
-            </div>
-          ) : null
-        }
+        action={permission !== "viewer" ? <Btn onClick={() => setAddOpen(true)}>+ 자산 등록</Btn> : null}
       />
       <SummaryCards items={[
         { label: "전체 자산", value: visibleAssets.length, color: C.primary },
-        { label: "사용중", value: visibleAssets.filter(a => a.status === "사용중").length, color: "#10B981" },
-        { label: "미사용", value: visibleAssets.filter(a => a.status === "미사용").length, color: C.textMuted },
-        { label: "수리중", value: visibleAssets.filter(a => a.status === "수리중").length, color: C.danger },
-        { label: "분실", value: visibleAssets.filter(a => a.status === "분실").length, color: "#F97316" },
+        ...STATUS_OPTIONS.map(s => ({ label: s, value: visibleAssets.filter(a => a.status === s).length, color: STATUS_COLORS[s] })),
         { label: "보증 만료", value: visibleAssets.filter(a => getWarrantyStatus(a.warrantyExpiry) === "expired").length, color: "#DC2626" },
         { label: "만료 임박", value: visibleAssets.filter(a => getWarrantyStatus(a.warrantyExpiry) === "warning").length, color: "#F97316" },
-        { label: "전체 구성원", value: members.length, color: C.purple },
       ]} />
 
-      {/* 상태 필터 */}
       <SearchFilter value={search} onChange={setSearch}
-      filters={["전체", "사용중", "미사용", "수리중", "분실"]} active={filterStatus} onFilter={setFilterStatus} />
-      {/* 부서 필터 */}
-      {deptFilterRow}
+        filters={["전체", ...STATUS_OPTIONS]} active={filterStatus} onFilter={setFilterStatus} />
       <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
-        {["전체", ...ASSET_TYPES].map(t => (
-          <button key={t} onClick={() => setFilterType(t)}
-            style={{ padding: "9px 16px", borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: "pointer",
-              border: `1px solid ${C.border}`,
-              background: filterType === t ? C.primary : C.card,
-              color: filterType === t ? "#fff" : C.textMuted, transition: "all 0.15s" }}>
-            {t}
-          </button>
-        ))}
+        {filterSelect(filterDept, setFilterDept, departments, "부서")}
+        {filterSelect(filterType, setFilterType, assetTypes, "유형")}
       </div>
 
       <SortableTable
-      headers={ASSET_HEADERS}
-      sortKey={sortKey} sortDir={sortDir} onSort={handleSort}
-      extraHeader={
-        <input type="checkbox"
-          checked={selectedIds.length === filtered.length && filtered.length > 0}
-          onChange={e => setSelectedIds(e.target.checked ? filtered.map(a => a.id) : [])}
-          style={{ cursor: "pointer", width: 15, height: 15 }}
-        />
-      }
-      rows={filtered.map((a, i) => (
-        <tr key={a.id}
-          style={{ borderBottom: i < filtered.length - 1 ? `1px solid ${C.bg}` : "none", cursor: "pointer",
-            background: selectedIds.includes(a.id) ? "#EFF6FF" : "transparent" }}
-          onMouseEnter={e => { if (!selectedIds.includes(a.id)) e.currentTarget.style.background = "#F8FAFC"; }}
-          onMouseLeave={e => { if (!selectedIds.includes(a.id)) e.currentTarget.style.background = "transparent"; }}>
-          {/* 체크박스 td */}
-          <td style={{ padding: "14px 16px" }} onClick={e => e.stopPropagation()}>
-            <input type="checkbox"
-              checked={selectedIds.includes(a.id)}
-              onChange={e => {
-                setSelectedIds(prev =>
-                  e.target.checked ? [...prev, a.id] : prev.filter(id => id !== a.id)
+        headers={ASSET_HEADERS}
+        sortKey={sortKey} sortDir={sortDir} onSort={handleSort}
+        extraHeader={
+          <input type="checkbox"
+            checked={selectedIds.length === filtered.length && filtered.length > 0}
+            onChange={e => setSelectedIds(e.target.checked ? filtered.map(a => a.id) : [])}
+            style={{ cursor: "pointer", width: 15, height: 15 }}
+          />
+        }
+        rows={filtered.map((a, i) => (
+          <tr key={a.id}
+            onClick={() => openDetail(a)}
+            style={{ borderBottom: i < filtered.length - 1 ? `1px solid ${C.bg}` : "none", cursor: "pointer",
+              background: selectedIds.includes(a.id) ? "#EFF6FF" : "transparent" }}
+            onMouseEnter={e => { if (!selectedIds.includes(a.id)) e.currentTarget.style.background = "#F8FAFC"; }}
+            onMouseLeave={e => { if (!selectedIds.includes(a.id)) e.currentTarget.style.background = "transparent"; }}>
+            <td style={{ padding: "14px 16px" }} onClick={e => e.stopPropagation()}>
+              <input type="checkbox"
+                checked={selectedIds.includes(a.id)}
+                onChange={e => setSelectedIds(prev => e.target.checked ? [...prev, a.id] : prev.filter(id => id !== a.id))}
+                style={{ cursor: "pointer", width: 15, height: 15 }}
+              />
+            </td>
+            <td style={{ ...td, fontSize: 13, color: C.textMuted, fontWeight: 600 }}>{a.id}</td>
+            <td style={{ ...td, fontSize: 13, color: C.textLight }}>{a.legacyNo || "-"}</td>
+            <td style={{ ...td, fontWeight: 500 }}>{a.name || "-"}</td>
+            <td style={{ ...td, color: C.textMuted }}>{a.type}</td>
+            <td style={{ ...td }}><StatusBadge status={a.status} /></td>
+            <td style={td}>{a.location || "-"}</td>
+            <td style={td}>{a.department}</td>
+            <td style={{ ...td, color: a.memberId ? C.text : C.textLight }}>{displayUser(a.user)}</td>
+            <td style={td}>
+              {(() => {
+                const ws = getWarrantyStatus(a.warrantyExpiry);
+                if (!a.warrantyExpiry) return <span style={{ color: C.textLight }}>-</span>;
+                return (
+                  <span style={{
+                    fontSize: 12, fontWeight: ws ? 600 : 400,
+                    color: ws === "expired" ? "#DC2626" : ws === "warning" ? "#F97316" : C.textMuted,
+                    background: ws === "expired" ? "#FEE2E2" : ws === "warning" ? "#FFEDD5" : "transparent",
+                    padding: ws ? "2px 8px" : 0,
+                    borderRadius: ws ? 6 : 0,
+                  }}>
+                    {ws === "expired" && "만료 "}
+                    {ws === "warning" && "임박 "}
+                    {a.warrantyExpiry}
+                  </span>
                 );
-              }}
-              style={{ cursor: "pointer", width: 15, height: 15 }}
-            />
-          </td>
-          {/* 기존 td들 — onClick을 tr에서 각 td로 이동 */}
-          <td style={{ width: 100,
-            maxWidth: 100,
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap", padding: "10px 12px", fontSize: 13, color: C.textMuted }}
-            onClick={() => { setSelected(a); setEditMode(false); }}>{a.id}</td>
-          <td style={{ padding: "10px 12px", fontSize: 14, color: C.text, fontWeight: 500, whiteSpace: "nowrap" }}
-            onClick={() => { setSelected(a); setEditMode(false); }}>{a.name}</td>
-          <td style={{ padding: "10px 12px", fontSize: 14, color: C.textMuted, whiteSpace: "nowrap" }}
-            onClick={() => { setSelected(a); setEditMode(false); }}>{a.type || "기타"}</td>
-          <td style={{ padding: "10px 12px", whiteSpace: "nowrap" }}
-            onClick={() => { setSelected(a); setEditMode(false); }}><StatusBadge status={a.status} /></td>
-          <td style={{ padding: "10px 12px", fontSize: 14, color: C.text, whiteSpace: "nowrap" }}
-            onClick={() => { setSelected(a); setEditMode(false); }}>{a.location}</td>
-          <td style={{ padding: "10px 12px", fontSize: 14, color: C.text, whiteSpace: "nowrap" }}
-            onClick={() => { setSelected(a); setEditMode(false); }}>{a.department || "-"}</td>
-          <td style={{ padding: "10px 12px", fontSize: 14, color: a.user === "-" ? C.textLight : C.text, whiteSpace: "nowrap" }}
-            onClick={() => { setSelected(a); setEditMode(false); }}>{displayUser(a.user)}</td>
-          <td style={{ padding: "10px 12px", whiteSpace: "nowrap" }}
-            onClick={() => { setSelected(a); setEditMode(false); }}>
-            {(() => {
-              const ws = getWarrantyStatus(a.warrantyExpiry);
-              if (!a.warrantyExpiry || a.warrantyExpiry === "-") return <span style={{ color: C.textLight }}>-</span>;
-              return (
-                <span style={{
-                  fontSize: 12, fontWeight: ws ? 600 : 400,
-                  color: ws === "expired" ? "#DC2626" : ws === "warning" ? "#F97316" : C.textMuted,
-                  background: ws === "expired" ? "#FEE2E2" : ws === "warning" ? "#FFEDD5" : "transparent",
-                  padding: ws ? "2px 8px" : 0,
-                  borderRadius: ws ? 6 : 0,
-                }}>
-                  {ws === "expired" && "만료 "}
-                  {ws === "warning" && "임박 "}
-                  {a.warrantyExpiry.slice(0, 10)}
-                </span>
-              );
-            })()}
-          </td>
-          <td style={{ padding: "10px 12px", fontSize: 14, color: C.text, whiteSpace: "nowrap" }}
-            onClick={() => { setSelected(a); setEditMode(false); }}>{a.purchaseDate && a.purchaseDate !== "-" ? displayDate(a.purchaseDate) : "-"}</td>
-          <td style={{ padding: "10px 12px", fontSize: 14, color: C.text, whiteSpace: "nowrap" }}
-            onClick={() => { setSelected(a); setEditMode(false); }}>{a.purchaseCost && a.purchaseCost !== "-" ? `${Number(a.purchaseCost).toLocaleString()}원` : "-"}</td>
-          <td style={{ padding: "10px 12px", fontSize: 14, color: C.text, whiteSpace: "nowrap" }}
-            onClick={() => { setSelected(a); setEditMode(false); }}>{a.vendor || "-"}</td>
-          <td style={{ padding: "10px 12px", fontSize: 13, color: C.textLight, whiteSpace: "nowrap", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis" }}
-            onClick={() => { setSelected(a); setEditMode(false); }}>{a.note || "-"}</td>
-          <td style={{ padding: "10px 12px", fontSize: 13, color: C.textLight, whiteSpace: "nowrap" }}
-            onClick={() => { setSelected(a); setEditMode(false); }}>{displayDate(a.date)}</td>
-        </tr>
-      ))}
-    />
+              })()}
+            </td>
+            <td style={td}>{a.purchaseDate || "-"}</td>
+            <td style={td}>{a.purchaseCost != null ? `${Number(a.purchaseCost).toLocaleString()}원` : "-"}</td>
+            <td style={{ ...td, fontSize: 13, color: C.textLight, maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis" }}>{a.note || "-"}</td>
+            <td style={{ ...td, fontSize: 13, color: C.textLight }}>{displayDate(a.date)}</td>
+          </tr>
+        ))}
+      />
       <Pagination total={totalFiltered} page={currentPage} perPage={PER_PAGE} onChange={setCurrentPage} />
 
       {/* 일괄 처리 바 */}
-      {selectedIds.length > 0 && (
+      {selectedIds.length > 0 && permission !== "viewer" && (
         <div style={{ position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)", background: C.sidebar, borderRadius: 12, padding: "14px 24px", display: "flex", alignItems: "center", gap: 16, boxShadow: "0 8px 32px rgba(0,0,0,0.2)", zIndex: 40 }}>
-          <span style={{ fontSize: 14, fontWeight: 600, color: "#fff" }}>
-            {selectedIds.length}개 선택됨
-          </span>
-          <Btn small onClick={() => setBulkOpen(true)}>일괄 배정</Btn>
-          
+          <span style={{ fontSize: 14, fontWeight: 600, color: "#fff" }}>{selectedIds.length}개 선택됨</span>
+          <Btn small onClick={() => { setBulkMember(null); setBulkMode("assign"); }}>일괄 배정</Btn>
           <Btn small variant="danger" onClick={() => {
-            const returnable = assets.filter(a => selectedIds.includes(a.id) && a.user !== "-");
-            if (returnable.length === 0) {
-              alert("선택한 자산 중 배정된 자산이 없습니다.");
-              return;
-            }
-            if (!window.confirm(`선택한 ${selectedIds.length}개 중 배정된 ${returnable.length}개 자산을 반납 처리할까요?`)) return;
-            const histories = [];
-            const updatedAssets = assets.map(a => {
-              if (selectedIds.includes(a.id) && a.user !== "-") {
-                const updated = { ...a, user: "-", status: "미사용" };
-                histories.push(makeHistory("반납", updated, a.user, "-", "일괄 반납 처리"));
-                return updated;
-              }
-              return a;
-            });
-            setAssets(updatedAssets, histories);
-            setSelectedIds([]);
-            alert(`${returnable.length}개 자산이 반납 처리되었습니다.`);
+            const returnable = assets.filter(a => selectedIds.includes(a.id) && a.memberId != null).map(a => a.id);
+            if (returnable.length === 0) return alert("선택한 자산 중 배정된 자산이 없습니다.");
+            if (!window.confirm(`선택한 ${selectedIds.length}개 중 배정된 ${returnable.length}개 자산을 반납(→ 보관) 처리할까요?`)) return;
+            runBulk(returnable, { memberId: null }, "일괄 반납");
           }}>일괄 반납</Btn>
-          <Btn small variant="ghost" onClick={() => setBulkStatusOpen(true)}>일괄 상태 변경</Btn>
+          <Btn small variant="ghost" onClick={() => setBulkMode("status")}>일괄 상태 변경</Btn>
+          <Btn small variant="ghost" onClick={() => { setBulkMove({ departmentId: "", location: "" }); setBulkMode("move"); }}>일괄 이동</Btn>
           <Btn small variant="ghost" onClick={() => setSelectedIds([])}>선택 해제</Btn>
         </div>
       )}
 
-      {/* 일괄 배정 모달 */}
-      {bulkOpen && (
-        <Modal title={`일괄 배정 (${selectedIds.length}개 자산)`} onClose={() => { setBulkOpen(false); setBulkUser(""); }}>
+      {/* 일괄 처리 모달 */}
+      {bulkMode && (
+        <Modal title={`${{ assign: "일괄 배정", status: "일괄 상태 변경", move: "일괄 이동" }[bulkMode]} (${selectedIds.length}개 자산)`}
+          onClose={() => setBulkMode(null)}>
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
             <div style={{ background: C.bg, borderRadius: 8, padding: 12, maxHeight: 160, overflowY: "auto" }}>
               {selectedIds.map(id => {
                 const a = assets.find(a => a.id === id);
                 return a ? (
                   <div key={id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                    <span style={{ fontSize: 13, color: C.text }}>{a.name}</span>
-                    <span style={{ fontSize: 12, color: C.textMuted }}>{displayUser(a.user)}</span>
+                    <span style={{ fontSize: 13, color: C.text }}>{a.id} {a.name}</span>
+                    <span style={{ fontSize: 12, color: C.textMuted }}>{displayUser(a.user)} · {a.department}</span>
                   </div>
                 ) : null;
               })}
             </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              <label style={{ fontSize: 12, color: C.textMuted, fontWeight: 600 }}>배정할 사용자</label>
-              <select value={bulkUser} onChange={e => setBulkUser(e.target.value)}
-                style={{ border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 12px", fontSize: 14, color: C.text, outline: "none", background: "#fff" }}>
-                <option value="">선택해 주세요</option>
-                {members.map(m => <option key={m.id} value={m.name}>{m.name} ({m.department})</option>)}
-              </select>
-            </div>
-            {!bulkUser && (
-              <p style={{ margin: 0, fontSize: 12, color: C.danger }}>사용자를 선택해 주세요.</p>
+            {bulkMode === "assign" && <MemberSelect label="배정할 사용자" value={bulkMember} onChange={setBulkMember} members={members} />}
+            {bulkMode === "status" && (
+              <>
+                {/* 사용중은 사용자가 필요하므로 일괄 배정으로 */}
+                <SelectField label="변경할 상태" value={bulkStatus} onChange={setBulkStatus} options={STATUS_OPTIONS.filter(s => s !== "사용중")} />
+                <div style={{ background: "#FEF3C7", borderRadius: 8, padding: "10px 14px", fontSize: 13, color: "#92400E" }}>
+                  ⚠️ '{bulkStatus}'으로 변경하면 사용자가 자동으로 해제되고 반납 이력이 생성됩니다.
+                </div>
+              </>
             )}
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 8 }}>
-              <Btn variant="ghost" onClick={() => { setBulkOpen(false); setBulkUser(""); }}>취소</Btn>
-              <Btn onClick={() => {
-                if (!bulkUser) return;
-                const histories = [];
-                const updatedAssets = assets.map(a => {
-                  if (selectedIds.includes(a.id)) {
-                    // 기존 사용자가 있으면 반납 이력 먼저
-                    if (a.user && a.user !== "-") {
-                      histories.push(makeHistory("반납", a, a.user, "-", `${a.user} → ${bulkUser} 일괄 재배정`, histories.length * 2));
-                    }
-                    const updated = { ...a, user: bulkUser, status: "사용중" };
-                    histories.push(makeHistory("배정", updated, a.user || "-", bulkUser, "일괄 배정 처리", histories.length * 2 + 1));
-                    return updated;
-                  }
-                  return a;
-                });
-                setAssets(updatedAssets, histories);
-                setBulkOpen(false);
-                setBulkUser("");
-                setSelectedIds([]);
-              }}>배정</Btn>
-            </div>
-          </div>
-        </Modal>
-      )}
-
-      {/* 일괄 상태 변경 모달 */}
-      {bulkStatusOpen && (
-        <Modal title={`일괄 상태 변경 (${selectedIds.length}개 자산)`} onClose={() => setBulkStatusOpen(false)}>
-          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-            <div style={{ background: C.bg, borderRadius: 8, padding: 12, maxHeight: 160, overflowY: "auto" }}>
-              {selectedIds.map(id => {
-                const a = assets.find(a => a.id === id);
-                return a ? (
-                  <div key={id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                    <span style={{ fontSize: 13, color: C.text }}>{a.name}</span>
-                    <StatusBadge status={a.status} />
-                  </div>
-                ) : null;
-              })}
-            </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              <label style={{ fontSize: 12, color: C.textMuted, fontWeight: 600 }}>변경할 상태</label>
-              <select value={bulkStatus} onChange={e => setBulkStatus(e.target.value)}
-                style={{ border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 12px", fontSize: 14, color: C.text, outline: "none", background: "#fff" }}>
-                {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
-              </select>
-            </div>
-            {(bulkStatus === "미사용" || bulkStatus === "수리중" || bulkStatus === "분실") && (
-              <div style={{ background: "#FEF3C7", borderRadius: 8, padding: "10px 14px", fontSize: 13, color: "#92400E" }}>
-                ⚠️ '{bulkStatus}'으로 변경하면 사용자가 자동으로 초기화됩니다.
+            {bulkMode === "move" && (
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                <SelectField label="이동할 부서 (비우면 유지)" value={bulkMove.departmentId} onChange={v => setBulkMove({ ...bulkMove, departmentId: v })}
+                  options={[{ value: "", label: "유지" }, ...departments.filter(d => d.active).map(d => ({ value: String(d.id), label: `${d.corporation} · ${d.name}` }))]} />
+                <InputField label="이동할 위치 (비우면 유지)" value={bulkMove.location} onChange={v => setBulkMove({ ...bulkMove, location: v })} />
               </div>
             )}
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 8 }}>
-              <Btn variant="ghost" onClick={() => setBulkStatusOpen(false)}>취소</Btn>
+              <Btn variant="ghost" onClick={() => setBulkMode(null)}>취소</Btn>
               <Btn onClick={() => {
-                const histories = [];
-                const updatedAssets = assets.map(a => {
-                  if (!selectedIds.includes(a.id)) return a;
-                  let updated = { ...a, status: bulkStatus };
-                  if ((bulkStatus === "미사용" || bulkStatus === "수리중" || bulkStatus === "분실") && a.user !== "-") {
-                    histories.push(makeHistory("반납", updated, a.user, "-", `일괄 상태 변경(${bulkStatus})으로 인한 자동 반납`));
-                    updated.user = "-";
-                  }
-                  histories.push(makeHistory("상태변경", updated, updated.user, updated.user, `일괄 상태 변경: ${a.status} → ${bulkStatus}`));
-                  return updated;
-                });
-                setAssets(updatedAssets, histories);
-                setBulkStatusOpen(false);
-                setSelectedIds([]);
-              }}>변경</Btn>
-            </div>
-          </div>
-        </Modal>
-      )}
-      
-      {importGuideOpen && (
-        <Modal title="자산 엑셀 가져오기" onClose={() => setImportGuideOpen(false)}>
-          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            <div style={{ background: "#EFF6FF", borderRadius: 8, padding: "12px 14px", fontSize: 13, color: "#1D4ED8", lineHeight: 1.6 }}>
-              ℹ️ 아래 양식을 다운로드하여 자산 정보를 입력한 뒤 파일을 선택해주세요.<br />
-              필수 항목: <strong>자산명, 유형, 위치</strong>
-            </div>
-            <Btn variant="ghost" onClick={() => {
-              const template = XLSX.utils.book_new();
-              const ws = XLSX.utils.aoa_to_sheet([
-                ["자산명", "유형", "위치", "사용부서", "모델명", "시리얼넘버", "취득일자", "취득금액", "구입처", "보증만료일", "비고"],
-                ["노트북-예시", "노트북", "본사 3층", "경영지원사업부", "LG Gram 16", "SN-001", "2025-01-01", "1500000", "LG전자", "2027-01-01", "예시 데이터"],
-              ]);
-              XLSX.utils.book_append_sheet(template, ws, "자산목록");
-              XLSX.writeFile(template, "자산등록_양식.xlsx");
-            }}>⬇ 양식 다운로드</Btn>
-            {importError && (
-              <p style={{ margin: 0, fontSize: 13, color: C.danger }}>{importError}</p>
-            )}
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-              <Btn variant="ghost" onClick={() => { setImportGuideOpen(false); setImportError(""); }}>취소</Btn>
-              <Btn onClick={() => fileInputRef.current.click()}>📂 파일 선택</Btn>
-            </div>
-          </div>
-        </Modal>
-      )}
-
-      {/* 엑셀 가져오기 미리보기 모달 */}
-      {importOpen && (
-        <Modal title={`엑셀 가져오기 (${importData.length}건)`} onClose={() => { setImportOpen(false); setImportData([]); }} wide>
-          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-            <div style={{ background: "#EFF6FF", borderRadius: 8, padding: "10px 14px", fontSize: 13, color: "#1D4ED8" }}>
-              ℹ️ 아래 데이터가 등록됩니다. 확인 후 가져오기를 눌러주세요.
-            </div>
-            <div style={{ overflowX: "auto", maxHeight: 320, overflowY: "auto", borderRadius: 8, border: `1px solid ${C.border}` }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-                <thead>
-                  <tr style={{ background: "#F8FAFC", borderBottom: `1px solid ${C.border}` }}>
-                    {["자산명", "유형", "위치", "사용부서", "모델명", "시리얼넘버", "취득금액", "구입처"].map(h => (
-                      <th key={h} style={{ padding: "8px 12px", textAlign: "left", fontWeight: 600, color: C.textMuted, whiteSpace: "nowrap" }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {importData.map((a, i) => (
-                    <tr key={i} style={{ borderBottom: `1px solid ${C.bg}` }}>
-                      <td style={{ padding: "8px 12px", whiteSpace: "nowrap" }}>{a.name}</td>
-                      <td style={{ padding: "8px 12px", whiteSpace: "nowrap" }}>{a.type}</td>
-                      <td style={{ padding: "8px 12px", whiteSpace: "nowrap" }}>{a.location}</td>
-                      <td style={{ padding: "8px 12px", whiteSpace: "nowrap" }}>{a.department}</td>
-                      <td style={{ padding: "8px 12px", whiteSpace: "nowrap" }}>{a.model}</td>
-                      <td style={{ padding: "8px 12px", whiteSpace: "nowrap" }}>{a.serial}</td>
-                      <td style={{ padding: "8px 12px", whiteSpace: "nowrap" }}>{a.purchaseCost !== "-" ? `${Number(a.purchaseCost).toLocaleString()}원` : "-"}</td>
-                      <td style={{ padding: "8px 12px", whiteSpace: "nowrap" }}>{a.vendor}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 8 }}>
-              <div style={{ display: "flex", gap: 8 }}>
-                <Btn variant="ghost" onClick={() => { setImportOpen(false); setImportData([]); }}>취소</Btn>
-                <Btn onClick={handleImportConfirm}>가져오기 ({importData.length}건)</Btn>
-              </div>
+                if (bulkMode === "assign") {
+                  if (bulkMember == null) return alert("사용자를 목록에서 선택해 주세요.");
+                  return runBulk(selectedIds, { memberId: bulkMember }, "일괄 배정");
+                }
+                if (bulkMode === "status") return runBulk(selectedIds, { status: bulkStatus }, "일괄 상태 변경");
+                const fields = {};
+                if (bulkMove.departmentId) fields.departmentId = Number(bulkMove.departmentId);
+                if (bulkMove.location.trim()) fields.location = bulkMove.location.trim();
+                if (!Object.keys(fields).length) return alert("부서 또는 위치를 입력해 주세요.");
+                return runBulk(selectedIds, fields, "일괄 이동");
+              }}>적용</Btn>
             </div>
           </div>
         </Modal>
@@ -703,69 +448,26 @@ export default function AssetPage({ assets, setAssets, history, members, permiss
       {addOpen && (
         <Modal title="자산 등록" onClose={() => setAddOpen(false)} wide>
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-            {/* 1행: 자산명 + 유형 */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-              <InputField label="자산명 *" value={form.name} onChange={v => setForm({ ...form, name: v })} />
-              <SelectField label="유형" value={form.type} onChange={v => setForm({ ...form, type: v })} options={ASSET_TYPES} />
-            </div>
-            {/* 2행: 수량 + 위치 */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <AssetForm form={form} setForm={setForm} {...masters} isCreate quantity={quantity} />
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: 12 }}>
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                 <label style={{ fontSize: 12, color: C.textMuted, fontWeight: 600 }}>수량</label>
-                <input type="number" min="1" max="100" value={form.quantity}
-                  onChange={e => setForm({ ...form, quantity: Math.max(1, parseInt(e.target.value) || 1) })}
+                <input type="number" min="1" max="100" value={quantity}
+                  onChange={e => {
+                    const n = Math.min(100, Math.max(1, parseInt(e.target.value) || 1));
+                    setQuantity(n);
+                    if (n > 1) setForm(f => ({ ...f, memberId: null, status: f.status === "사용중" ? "보관" : f.status }));
+                  }}
                   style={{ border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 12px", fontSize: 14, color: C.text, outline: "none" }}
-                  onFocus={e => e.target.style.borderColor = C.primary}
-                  onBlur={e => e.target.style.borderColor = C.border}
                 />
               </div>
-              <InputField label="위치 *" value={form.location} onChange={v => setForm({ ...form, location: v })} />
+              <InputField label="자산번호 직접 입력 (비우면 자동 발급, 수량 1개일 때만)" value={manualId}
+                onChange={setManualId} placeholder="예: DR-NB-0001" />
             </div>
-            {/* 3행: 취득일자 + 취득금액 */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-              <InputField label="취득일자" value={form.purchaseDate} type="date" onChange={v => setForm({ ...form, purchaseDate: v })} />
-              <InputField label="취득금액 (원)" value={form.purchaseCost} type="number" onChange={v => setForm({ ...form, purchaseCost: v })} />
-            </div>
-            {/* 4행: 구입처 + 사용부서 */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-              <InputField label="구입처" value={form.vendor} onChange={v => setForm({ ...form, vendor: v })} />
-              <SelectField label="사용부서" value={form.department || ""} onChange={v => setForm({ ...form, department: v })}
-                options={["", ...DEPARTMENTS]} />
-            </div>
-            {/* 5행: 모델명 + 시리얼 넘버 */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-              <InputField label="모델명" value={form.model} onChange={v => setForm({ ...form, model: v })} />
-              <InputField label="시리얼 넘버" value={form.serial} onChange={v => setForm({ ...form, serial: v })} />
-            </div>
-            {/* 6행: 보증 만료일 */}
-            <InputField label="보증 만료일" value={form.warrantyExpiry} type="date" onChange={v => setForm({ ...form, warrantyExpiry: v })} />
-            {/* 7행: 사용자 (수량 1일 때만 활성) */}
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              <label style={{ fontSize: 12, color: C.textMuted, fontWeight: 600 }}>
-                사용자 {form.quantity > 1 && <span style={{ color: C.textLight, fontWeight: 400 }}>(수량 2개 이상 시 등록 후 개별 배정)</span>}
-              </label>
-              <select value={form.user} onChange={e => setForm({ ...form, user: e.target.value })}
-                disabled={form.quantity > 1}
-                style={{ border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 12px", fontSize: 14,
-                  color: form.quantity > 1 ? C.textLight : C.text, outline: "none",
-                  background: form.quantity > 1 ? C.bg : "#fff", cursor: form.quantity > 1 ? "not-allowed" : "pointer" }}>
-                <option value="">미배정</option>
-                {members.map(m => <option key={m.id} value={m.name}>{m.name} ({m.department})</option>)}
-              </select>
-            </div>
-            {/* 7행: 비고 */}
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              <label style={{ fontSize: 12, color: C.textMuted, fontWeight: 600 }}>비고</label>
-              <textarea value={form.note} onChange={e => setForm({ ...form, note: e.target.value })}
-                rows={2} style={{ border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 12px",
-                  fontSize: 14, color: C.text, outline: "none", resize: "vertical", fontFamily: "inherit" }}
-                onFocus={e => e.target.style.borderColor = C.primary}
-                onBlur={e => e.target.style.borderColor = C.border}
-              />
-            </div>
-            {form.quantity > 1 && (
+            <EventFields value={addEvent} onChange={setAddEvent} />
+            {quantity > 1 && (
               <div style={{ background: "#EFF6FF", borderRadius: 8, padding: "10px 14px", fontSize: 13, color: "#1D4ED8" }}>
-                ℹ️ {form.quantity}개의 자산이 개별 자산번호로 일괄 등록됩니다.
+                ℹ️ {quantity}개의 자산이 개별 자산번호로 일괄 등록됩니다.
               </div>
             )}
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 8 }}>
@@ -778,131 +480,84 @@ export default function AssetPage({ assets, setAssets, history, members, permiss
 
       {/* 자산 상세 / 수정 모달 */}
       {selected && (
-        <Modal title={editMode ? "자산 수정" : "자산 상세"} onClose={() => setSelected(null)} wide>
-          {editMode ? (
+        <Modal title={editBase ? `자산 수정 — ${selected.id}` : "자산 상세"} onClose={() => { setSelectedId(null); setEditBase(null); }} wide>
+          {editBase ? (
             <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                <InputField label="자산명" value={editForm.name} onChange={v => setEditForm({ ...editForm, name: v })} />
-                <SelectField label="유형" value={editForm.type || "기타"} onChange={v => setEditForm({ ...editForm, type: v })} options={ASSET_TYPES} />
-              </div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                <InputField label="위치" value={editForm.location} onChange={v => setEditForm({ ...editForm, location: v })} />
-                <SelectField label="사용부서" value={editForm.department || ""} onChange={v => setEditForm({ ...editForm, department: v })} options={["", ...DEPARTMENTS]} />
-              </div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                <InputField label="취득일자" value={editForm.purchaseDate || ""} type="date" onChange={v => setEditForm({ ...editForm, purchaseDate: v })} />
-                <InputField label="취득금액 (원)" value={editForm.purchaseCost || ""} type="number" onChange={v => setEditForm({ ...editForm, purchaseCost: v })} />
-              </div>
-              <InputField label="구입처" value={editForm.vendor || ""} onChange={v => setEditForm({ ...editForm, vendor: v })} />
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                <InputField label="모델명" value={editForm.model || ""} onChange={v => setEditForm({ ...editForm, model: v })} />
-                <InputField label="시리얼 넘버" value={editForm.serial || ""} onChange={v => setEditForm({ ...editForm, serial: v })} />
-                <InputField label="보증 만료일" value={editForm.warrantyExpiry || ""} type="date" onChange={v => setEditForm({ ...editForm, warrantyExpiry: v })} />
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                <label style={{ fontSize: 12, color: C.textMuted, fontWeight: 600 }}>사용자</label>
-                <select value={editForm.user === "-" ? "" : editForm.user}
-                  onChange={e => setEditForm({ ...editForm, user: e.target.value || "-" })}
-                  style={{ border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 12px", fontSize: 14, color: C.text, outline: "none", background: "#fff" }}>
-                  <option value="">미배정 (-)</option>
-                  {members.map(m => <option key={m.id} value={m.name}>{m.name} ({m.department})</option>)}
-                </select>
-              </div>
-              <SelectField label="상태" value={editForm.status} onChange={v => setEditForm({ ...editForm, status: v })} options={STATUS_OPTIONS} />
-              {(editForm.status === "미사용" || editForm.status === "수리중" || editForm.status === "분실") && editForm.user !== "-" && (
-                <div style={{ background: "#FEF3C7", borderRadius: 8, padding: "10px 14px", fontSize: 13, color: "#92400E" }}>
-                  ⚠️ 상태를 '{editForm.status}'으로 변경하면 사용자가 자동으로 초기화됩니다.
-                </div>
-              )}
-              {editForm.status === "수리중" && selected?.status !== "수리중" && (
+              <AssetForm form={editForm} setForm={setEditForm} {...masters} />
+              {editForm.status === "수리중" && editBase.status !== "수리중" && (
                 <div style={{ background: "#EFF6FF", borderRadius: 10, padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
                   <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: "#1D4ED8" }}>수리 정보 입력 (선택)</p>
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                    <InputField label="수리업체" value={editForm.repairVendor || ""} onChange={v => setEditForm({ ...editForm, repairVendor: v })} />
-                    <InputField label="수리비용 (원)" value={editForm.repairCost || ""} type="number" onChange={v => setEditForm({ ...editForm, repairCost: v })} />
+                    <InputField label="수리업체" value={repair.vendor} onChange={v => setRepair({ ...repair, vendor: v })} />
+                    <InputField label="수리비용 (원)" value={repair.cost} type="number" onChange={v => setRepair({ ...repair, cost: v })} />
                   </div>
-                  <InputField label="수리내용" value={editForm.repairDetail || ""} onChange={v => setEditForm({ ...editForm, repairDetail: v })} />
-                  <InputField label="완료 예정일" value={editForm.repairExpectedDate || ""} type="date" onChange={v => setEditForm({ ...editForm, repairExpectedDate: v })} />
+                  <InputField label="수리내용" value={repair.content} onChange={v => setRepair({ ...repair, content: v })} />
+                  <InputField label="완료 예정일" value={repair.dueDate} type="date" onChange={v => setRepair({ ...repair, dueDate: v })} />
                 </div>
               )}
-              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                <label style={{ fontSize: 12, color: C.textMuted, fontWeight: 600 }}>비고</label>
-                <textarea value={editForm.note || ""} onChange={e => setEditForm({ ...editForm, note: e.target.value })}
-                  rows={2} style={{ border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 12px",
-                    fontSize: 14, color: C.text, outline: "none", resize: "vertical", fontFamily: "inherit" }}
-                  onFocus={e => e.target.style.borderColor = C.primary}
-                  onBlur={e => e.target.style.borderColor = C.border}
-                />
-              </div>
+              <EventFields value={editEvent} onChange={setEditEvent} />
               <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 8 }}>
-                <Btn variant="ghost" onClick={() => setEditMode(false)}>취소</Btn>
+                <Btn variant="ghost" onClick={() => setEditBase(null)}>취소</Btn>
                 <Btn onClick={saveEdit}>저장</Btn>
               </div>
             </div>
           ) : (
-              <div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 20 }}>
-                  {[
-                    { label: "자산번호", value: selected.id },
-                    { label: "유형", value: selected.type || "기타" },
-                    { label: "자산명", value: selected.name },
-                    { label: "모델명", value: selected.model || "-" },
-                    { label: "시리얼 넘버", value: selected.serial || "-" },
-                    { label: "상태", value: <StatusBadge status={selected.status} /> },
-                    { label: "사용부서", value: selected.department || "-" },
-                    { label: "사용자", value: displayUser(selected.user) },
-                    { label: "위치", value: selected.location },
-                    { label: "취득일자", value: selected.purchaseDate && selected.purchaseDate !== "-" ? displayDate(selected.purchaseDate) : "-" },
-                    { label: "취득금액", value: selected.purchaseCost && selected.purchaseCost !== "-" ? `${Number(selected.purchaseCost).toLocaleString()}원` : "-" },
-                    { label: "구입처", value: selected.vendor || "-" },
-                    { label: "보증 만료일", value: selected.warrantyExpiry && selected.warrantyExpiry !== "-" ? selected.warrantyExpiry.slice(0, 10) : "-" },
-                    { label: "등록일", value: displayDate(selected.date) },
-                    { label: "사용 기간", value: displayAge(selected.date) },
-                    { label: "비고", value: selected.note || "-" },
-                  ].map(({ label, value }) => <Field key={label} label={label} value={value} />)}
-                </div>
-                <div style={{ background: C.bg, borderRadius: 10, padding: 16, marginBottom: 20 }}>
-                  <p style={{ margin: "0 0 12px", fontSize: 13, fontWeight: 600, color: "#475569" }}>자산 이력</p>
-                  {assetHistory.length > 0
-                    ? assetHistory.map(h => (
-                      <div key={h.id} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
-                        <HistoryBadge type={h.type} />
-                        <span style={{ fontSize: 13, color: "#475569", whiteSpace: "nowrap", flexShrink: 0 }}>{displayUser(h.from)} → {displayUser(h.to)}</span>
-                        <span style={{ fontSize: 12, color: C.textLight, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{h.note}</span>
-                        <span style={{ fontSize: 12, color: C.textLight, whiteSpace: "nowrap", flexShrink: 0 }}>{displayDate(h.date)}</span>
-                      </div>
-                    ))
-                    : <p style={{ margin: 0, fontSize: 13, color: "#CBD5E1" }}>이력 없음</p>}
-                </div>
-                <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-                {/*<div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>*/}
+            <div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 20 }}>
+                {[
+                  { label: "자산번호", value: selected.id },
+                  { label: "구자산번호", value: selected.legacyNo || "-" },
+                  { label: "법인 · 유형", value: `${selected.corporation} · ${selected.type}` },
+                  { label: "자산명", value: selected.name || "-" },
+                  { label: "모델명", value: selected.model || "-" },
+                  { label: "시리얼 넘버", value: selected.serial || "-" },
+                  { label: "상태", value: <StatusBadge status={selected.status} /> },
+                  { label: "사용자", value: displayUser(selected.user) },
+                  { label: "사용부서", value: selected.department },
+                  { label: "위치", value: selected.location || "-" },
+                  ...(selectedType?.hasSpecs ? [
+                    { label: "CPU / RAM", value: `${selected.cpu || "-"} / ${selected.ram || "-"}` },
+                    { label: "저장장치 / OS", value: `${selected.storage || "-"} / ${selected.os || "-"}` },
+                  ] : []),
+                  { label: "제조년월", value: selected.manufacturedYm || "-" },
+                  { label: "취득일자", value: selected.purchaseDate || "-" },
+                  { label: "취득금액", value: selected.purchaseCost != null ? `${Number(selected.purchaseCost).toLocaleString()}원` : "-" },
+                  { label: "구입처", value: selected.vendor || "-" },
+                  { label: "구매품의번호", value: selected.approvalNo || "-" },
+                  { label: "보증 만료일", value: selected.warrantyExpiry || "-" },
+                  { label: "등록일", value: displayDate(selected.date) },
+                  { label: "사용 기간 (취득일 기준)", value: displayAge(selected.purchaseDate || selected.date) },
+                  { label: "비고", value: selected.note || "-" },
+                ].map(({ label, value }) => <Field key={label} label={label} value={value} />)}
+              </div>
+              <div style={{ background: C.bg, borderRadius: 10, padding: 16, marginBottom: 20 }}>
+                <p style={{ margin: "0 0 12px", fontSize: 13, fontWeight: 600, color: "#475569" }}>자산 이력</p>
+                {assetHistory.length > 0
+                  ? assetHistory.map(h => (
+                    <div key={h.id} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+                      <HistoryBadge type={h.type} />
+                      <span style={{ fontSize: 13, color: "#475569", whiteSpace: "nowrap", flexShrink: 0 }}>{displayUser(h.from)} → {displayUser(h.to)}</span>
+                      <span style={{ fontSize: 12, color: C.textLight, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={h.note}>{h.note}</span>
+                      <span style={{ fontSize: 12, color: C.textLight, whiteSpace: "nowrap", flexShrink: 0 }}>{displayDate(h.date)}</span>
+                    </div>
+                  ))
+                  : <p style={{ margin: 0, fontSize: 13, color: "#CBD5E1" }}>이력 없음</p>}
+              </div>
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
                 {/* QR 모달 */}
-                {showQR && selected && (
+                {showQR && (
                   <div
-                    style={{
-                      position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)",
-                      display: "flex", alignItems: "center", justifyContent: "center",
-                      zIndex: 9999
-                    }}
+                    style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999 }}
                     onClick={() => setShowQR(false)}
                   >
                     <div
                       id="qr-print-area"
-                      style={{
-                        background: "#fff", borderRadius: 16, padding: "32px 36px",
-                        display: "flex", flexDirection: "column", alignItems: "center",
-                        gap: 10, boxShadow: "0 8px 32px rgba(0,0,0,0.18)"
-                      }}
+                      style={{ background: "#fff", borderRadius: 16, padding: "32px 36px", display: "flex", flexDirection: "column", alignItems: "center", gap: 10, boxShadow: "0 8px 32px rgba(0,0,0,0.18)" }}
                       onClick={e => e.stopPropagation()}
                     >
-                      <QRCodeSVG
-                        value={`${window.location.origin}/#/assets/${selected.id}`}
-                        size={200}
-                      />
-                      <p style={{ margin: 0, fontWeight: 700, fontSize: 16, color: "#0F172A" }}>{selected.name}</p>
-                      <p style={{ margin: 0, fontSize: 12, color: "#64748B" }}>자산번호: {selected.id}</p>
-                      <p style={{ margin: 0, fontSize: 12, color: "#64748B" }}>{selected.type || "기타"} · {selected.department || "-"}</p>
-                      <p style={{ margin: 0, fontSize: 12, color: "#64748B" }}>위치: {selected.location || "-"}</p>
+                      <QRCodeSVG value={`${window.location.origin}/#/assets/${selected.id}`} size={200} />
+                      <p style={{ margin: 0, fontWeight: 800, fontSize: 20, color: "#0F172A", letterSpacing: 1 }}>{selected.id}</p>
+                      <p style={{ margin: 0, fontSize: 13, color: "#64748B" }}>{selected.name || selected.type}</p>
                       <button
                         onClick={() => {
                           const area = document.getElementById("qr-print-area");
@@ -912,20 +567,13 @@ export default function AssetPage({ assets, setAssets, history, members, permiss
                           document.body.innerHTML = original;
                           window.location.reload();
                         }}
-                        style={{
-                          marginTop: 8, padding: "8px 24px", background: "#6366F1",
-                          color: "#fff", border: "none", borderRadius: 8,
-                          fontSize: 13, fontWeight: 600, cursor: "pointer"
-                        }}
+                        style={{ marginTop: 8, padding: "8px 24px", background: "#6366F1", color: "#fff", border: "none", borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: "pointer" }}
                       >
                         🖨️ 인쇄
                       </button>
                       <button
                         onClick={() => setShowQR(false)}
-                        style={{
-                          padding: "6px 20px", background: "#F1F5F9", color: "#64748B",
-                          border: "none", borderRadius: 8, fontSize: 13, cursor: "pointer"
-                        }}
+                        style={{ padding: "6px 20px", background: "#F1F5F9", color: "#64748B", border: "none", borderRadius: 8, fontSize: 13, cursor: "pointer" }}
                       >
                         닫기
                       </button>
@@ -933,51 +581,17 @@ export default function AssetPage({ assets, setAssets, history, members, permiss
                   </div>
                 )}
 
-                {/* 기존 버튼 교체 */}
-                <Btn variant="ghost" small onClick={() => setShowQR(true)}>🔲 QR 출력</Btn> 
+                <Btn variant="ghost" small onClick={() => setShowQR(true)}>🔲 QR 출력</Btn>
 
-                {/* viewer/manager: 요청 버튼 */}
-                {permission !== "admin" && (
-                  <>
-                    <Btn variant="ghost" onClick={() => {
-                      if (!window.confirm(`'${selected.name}' 반납을 요청할까요?`)) return;
-                      const req = {
-                        type: "반납요청",
-                        assetId: selected.id,
-                        assetName: selected.name,
-                        requesterId: currentUser?.id || "-",
-                        requesterName: currentUser?.name || "-",
-                        targetUser: "-",
-                        status: "대기중",
-                        note: "반납 요청",
-                        date: toKST(),
-                        resolvedNote: "-",
-                        resolvedDate: "-",
-                      };
-                      api.requests.create(req).then((data) => {
-                        setRequests([data, ...requests]);
-                        alert("반납 요청이 접수되었습니다.");
-                        setSelected(null);
-                      }).catch(e => alert("요청 실패: " + e.message));
-                    }}>반납 요청</Btn>
-                  </>
+                {/* 본인 자산: 반납 요청 */}
+                {permission !== "admin" && selected.memberId === currentUser?.id && (
+                  <Btn variant="ghost" onClick={requestReturn}>반납 요청</Btn>
                 )}
-                {/* admin/manager: 수정/삭제 버튼 */}
+                {/* admin/manager: 수정/폐기 버튼 */}
                 {permission !== "viewer" && (
                   <>
                     <Btn variant="danger" onClick={() => setDisposeOpen(true)}>폐기</Btn>
-                    <Btn onClick={() => {
-                      setEditForm({
-                        ...selected,
-                        purchaseDate: selected.purchaseDate && selected.purchaseDate !== "-"
-                          ? selected.purchaseDate.slice(0, 10) : "",
-                        repairVendor: "",
-                        repairCost: "",
-                        repairDetail: "",
-                        repairExpectedDate: "",
-                      });
-                      setEditMode(true);
-                    }}>수정</Btn>
+                    <Btn onClick={startEdit}>수정</Btn>
                   </>
                 )}
               </div>
@@ -988,10 +602,10 @@ export default function AssetPage({ assets, setAssets, history, members, permiss
 
       {/* 폐기 처리 모달 */}
       {disposeOpen && selected && (
-        <Modal title={`자산 폐기 — ${selected.name}`} onClose={() => { setDisposeOpen(false); setDisposeForm({ reason: "", method: "폐기" }); }}>
+        <Modal title={`자산 폐기 — ${selected.id}`} onClose={() => { setDisposeOpen(false); setDisposeForm({ reason: "", method: "폐기" }); }}>
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
             <div style={{ background: C.dangerBg, borderRadius: 8, padding: "10px 14px", fontSize: 13, color: "#991B1B" }}>
-              ⚠️ 폐기 처리된 자산은 목록에서 제외됩니다. 이력은 영구 보존됩니다.
+              ⚠️ 폐기 처리된 자산은 목록에서 제외됩니다. 사용자가 있으면 반납 후 폐기됩니다. 이력은 영구 보존됩니다.
             </div>
             <SelectField
               label="폐기 방법"
@@ -1006,9 +620,7 @@ export default function AssetPage({ assets, setAssets, history, members, permiss
                 onChange={e => setDisposeForm({ ...disposeForm, reason: e.target.value })}
                 rows={3}
                 placeholder="폐기 사유를 입력해 주세요"
-                style={{ border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 12px", fontSize: 14, color: C.text, outline: "none", resize: "vertical", fontFamily: "inherit" }}
-                onFocus={e => e.target.style.borderColor = C.danger}
-                onBlur={e => e.target.style.borderColor = C.border}
+                style={textareaStyle}
               />
             </div>
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 8 }}>

@@ -43,8 +43,15 @@ class DisposeReq(BaseModel):
 
 @router.get("/{asset_id}")
 def get_asset(asset_id: str, user: dict = Depends(get_current_user)):
+    # QR 조회 화면용: 표시 이름까지 붙여서 반환
     with db() as conn:
-        return load_asset(conn, asset_id)
+        asset = load_asset(conn, asset_id)
+        names = conn.execute(
+            """SELECT t.name typeName, c.code corporationCode, d.name departmentName, m.name memberName
+               FROM assets a JOIN asset_types t ON t.id = a.typeId JOIN corporations c ON c.id = a.corporationId
+               LEFT JOIN departments d ON d.id = a.departmentId LEFT JOIN members m ON m.id = a.memberId
+               WHERE a.id = ?""", (asset_id,)).fetchone()
+        return {**asset, **dict(names)}
 
 
 @router.post("")

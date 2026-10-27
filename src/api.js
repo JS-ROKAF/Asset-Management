@@ -20,7 +20,9 @@ async function request(path, { method = "GET", body, auth = true } = {}) {
     let message = `요청 실패 (${res.status})`;
     try {
       const data = await res.json();
-      if (data?.detail) message = data.detail;
+      if (typeof data?.detail === "string") message = data.detail;
+      // pydantic 검증 오류는 배열로 온다
+      else if (Array.isArray(data?.detail)) message = data.detail.map(d => `${d.loc?.at(-1)}: ${d.msg}`).join("\n");
     } catch {
       // 본문이 JSON이 아니면 기본 메시지 유지
     }
@@ -32,45 +34,41 @@ async function request(path, { method = "GET", body, auth = true } = {}) {
   return res.json();
 }
 
+const post = (path, body) => request(path, { method: "POST", body });
+const patch = (path, body) => request(path, { method: "PATCH", body });
+
 export const api = {
-  login: (email, password) => request("/api/auth/login", { method: "POST", body: { email, password }, auth: false }),
+  login: (employeeNo, password) => request("/api/auth/login", { method: "POST", body: { employeeNo, password }, auth: false }),
   me: () => request("/api/auth/me"),
   bootstrap: () => request("/api/bootstrap"),
   health: () => request("/api/health", { auth: false }),
   tableCounts: () => request("/api/table_counts"),
 
+  // 자산 쓰기는 의도만 보낸다. 이력은 서버가 만든다
   assets: {
     get: (id) => request(`/api/assets/${id}`),
-    bulkInsert: (rows) => request("/api/assets/bulk_insert", { method: "POST", body: rows }),
-    bulkDelete: (ids) => request("/api/assets/bulk_delete", { method: "POST", body: { ids } }),
-    update: (id, fields) => request(`/api/assets/${id}`, { method: "PATCH", body: fields }),
+    create: ({ fields, quantity, id, eventDate, memo }) => post("/api/assets", { fields, quantity, id, eventDate, memo }),
+    update: (id, { fields, updatedAt, eventDate, memo, repair }) => patch(`/api/assets/${id}`, { fields, updatedAt, eventDate, memo, repair }),
+    bulk: (ids, fields, memo) => post("/api/assets/bulk", { ids, fields, memo }),
+    dispose: (id, method, reason) => post(`/api/assets/${id}/dispose`, { method, reason }),
   },
   members: {
-    bulkInsert: (rows) => request("/api/members/bulk_insert", { method: "POST", body: rows }),
-    bulkDelete: (ids) => request("/api/members/bulk_delete", { method: "POST", body: { ids } }),
-    update: (id, fields) => request(`/api/members/${id}`, { method: "PATCH", body: fields }),
-    resetPassword: (id, newPassword) => request(`/api/members/${id}/reset_password`, { method: "POST", body: { new_password: newPassword } }),
+    create: (fields) => post("/api/members/bulk_insert", [fields]).then(rows => rows[0]),
+    update: (id, fields) => patch(`/api/members/${id}`, fields),
+    setPermission: (id, permission) => patch(`/api/members/${id}/permission`, { permission }),
+    retire: (id) => post(`/api/members/${id}/retire`, {}),
+    resetPassword: (id, newPassword) => post(`/api/members/${id}/reset_password`, { new_password: newPassword }),
+  },
+  masters: {
+    create: (kind, fields) => post(`/api/masters/${kind}`, fields),
+    update: (kind, id, fields) => patch(`/api/masters/${kind}/${id}`, fields),
   },
   history: {
-    list: () => request("/api/history"),
-    bulkInsert: (rows) => request("/api/history/bulk_insert", { method: "POST", body: rows }),
     delete: (id) => request(`/api/history/${id}`, { method: "DELETE" }),
   },
   requests: {
-    create: (fields) => request("/api/requests", { method: "POST", body: fields }),
-    update: (id, fields) => request(`/api/requests/${id}`, { method: "PATCH", body: fields }),
+    create: (type, assetId, note) => post("/api/requests", { type, assetId, note }),
+    resolve: (id, approve, resolvedNote) => post(`/api/requests/${id}/resolve`, { approve, resolvedNote }),
     delete: (id) => request(`/api/requests/${id}`, { method: "DELETE" }),
-  },
-  inspections: {
-    create: (fields) => request("/api/inspections", { method: "POST", body: fields }),
-    update: (id, fields) => request(`/api/inspections/${id}`, { method: "PATCH", body: fields }),
-    delete: (id) => request(`/api/inspections/${id}`, { method: "DELETE" }),
-    current: () => request("/api/inspections/current"),
-    itemsBulkInsert: (rows) => request("/api/inspections/items/bulk_insert", { method: "POST", body: rows }),
-    items: (params = {}) => {
-      const qs = new URLSearchParams(params).toString();
-      return request(`/api/inspections/items${qs ? `?${qs}` : ""}`);
-    },
-    updateItem: (id, fields) => request(`/api/inspections/items/${id}`, { method: "PATCH", body: fields }),
   },
 };

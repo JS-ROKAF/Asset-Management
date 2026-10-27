@@ -1,9 +1,7 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { getToken } from "./api";
-import { updateAssets } from "./services/assetService";
-import { updateMembers } from "./services/memberService";
-import { handleLogin, handleLogout, fetchAll, restoreSession } from "./services/authService";
-import { C, DEPARTMENTS } from "./constants";
+import { handleLogin, handleLogout, fetchAll, restoreSession, EMPTY_DATA } from "./services/authService";
+import { C } from "./constants";
 import Sidebar from "./components/layout/Sidebar";
 import Dashboard from "./pages/Dashboard";
 import AssetPage from "./pages/AssetPage";
@@ -11,49 +9,47 @@ import MemberPage from "./pages/MemberPage";
 import HistoryPage from "./pages/HistoryPage";
 import RequestPage from "./pages/RequestPage";
 import InspectionPage from "./pages/InspectionPage";
+import MasterPage from "./pages/MasterPage";
 import LoginPage from "./pages/LoginPage";
 
 // ── 메인 App ──
 export default function App() {
   const [session, setSession] = useState(null);
-  const [email, setEmail] = useState("");
+  const [employeeNo, setEmployeeNo] = useState("");
   const [password, setPassword] = useState("");
   const [authLoading, setAuthLoading] = useState(false);
-  const [assets, setAssetsState] = useState([]);
-  const [members, setMembersState] = useState([]);
-  const [history, setHistoryState] = useState([]);
-  const [requests, setRequestsState] = useState([]);
-  const [inspections, setInspectionsState] = useState([]);
-  const [inspectionItems, setInspectionItemsState] = useState([]);
+  const [data, setData] = useState(EMPTY_DATA);
   const [page, setPage] = useState("dashboard");
   const [focusAssetId, setFocusAssetId] = useState(null);
+  const [initialStatus, setInitialStatus] = useState(null);  // 대시보드 카드에서 상태 필터를 걸고 자산 목록 열기
   const [loading, setLoading] = useState(true);
 
   const currentUser = session;
-  const permission = currentUser?.permission || "admin";
-  const userDept = currentUser?.department || null;
+  const permission = currentUser?.permission;
+  const userDept = currentUser?.departmentId ?? null;
 
   const handleLoginWrapper = (e) => {
-    e.preventDefault();
-    handleLogin(email, password, setAuthLoading, setSession);
+    e?.preventDefault();
+    handleLogin(employeeNo, password, setAuthLoading, setSession);
   };
 
-  const updateAssetsWrapper = (newAssets, histories = []) =>
-    updateAssets(assets, newAssets, setAssetsState, setHistoryState, histories);
+  const refresh = useCallback(async () => {
+    setData(await fetchAll());
+    setLoading(false);
+  }, []);
 
-  const updateMembersWrapper = (newMembers) =>
-    updateMembers(members, newMembers, setMembersState);
-
-  const fetchAllWrapper = () =>
-    fetchAll(
-      setLoading,
-      setAssetsState,
-      setMembersState,
-      setHistoryState,
-      setRequestsState,
-      setInspectionsState,
-      setInspectionItemsState
-    );
+  // 모든 쓰기의 단일 경로: 서버 호출 → 성공하면 전체 재조회(서버가 만든 이력까지 반영) → 결과 반환. 실패 시 알림 후 null
+  const save = useCallback(async (call) => {
+    try {
+      const result = await call();
+      await refresh();
+      return result ?? true;
+    } catch (e) {
+      alert(e.status === 409 ? e.message : `저장 실패: ${e.message}`);
+      if (e.status === 409) await refresh();
+      return null;
+    }
+  }, [refresh]);
 
   useEffect(() => {
     if (!getToken()) { setLoading(false); return; }
@@ -61,8 +57,8 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (session) fetchAllWrapper();
-  }, [session]);
+    if (session) refresh();
+  }, [session, refresh]);
 
   const menuItems = [
     { key: "dashboard",   icon: "dashboard",   label: "대시보드" },
@@ -71,6 +67,7 @@ export default function App() {
     { key: "history",     icon: "history",     label: "이력 관리" },
     { key: "requests",    icon: "requests",    label: "요청 관리" },
     { key: "inspections", icon: "inspections", label: "정기 실사" },
+    ...(permission === "admin" ? [{ key: "masters", icon: "masters", label: "기준정보" }] : []),
   ];
 
   // ── 로딩 화면 ──
@@ -106,14 +103,16 @@ export default function App() {
   if (!session)
     return (
       <LoginPage
-        email={email}
+        employeeNo={employeeNo}
         password={password}
-        setEmail={setEmail}
+        setEmployeeNo={setEmployeeNo}
         setPassword={setPassword}
         onLogin={handleLoginWrapper}
         loading={authLoading}
       />
     );
+
+  const common = { ...data, permission, userDept, currentUser, save };
 
   // ── 메인 레이아웃 ──
   return (
@@ -130,90 +129,38 @@ export default function App() {
         page={page}
         setPage={setPage}
         menuItems={menuItems}
-        requests={requests}
-        inspections={inspections}
+        requests={data.requests}
+        inspections={[]}
         currentUser={currentUser}
         permission={permission}
-        onRefresh={fetchAllWrapper}
+        onRefresh={refresh}
         onLogout={() => handleLogout(setSession)}
       />
 
       {/* ── 페이지 콘텐츠 ── */}
       {page === "dashboard" && (
         <Dashboard
-          assets={assets}
-          members={members}
-          history={history}
-          permission={permission}
-          userDept={userDept}
-          onNavigate={(p, assetId) => {
+          {...common}
+          onNavigate={(p, assetId, status) => {
             setPage(p);
             if (assetId) setFocusAssetId(assetId);
+            setInitialStatus(status ?? null);
           }}
         />
       )}
       {page === "assets" && (
         <AssetPage
-          assets={assets}
-          setAssets={updateAssetsWrapper}
-          history={history}
-          members={members}
-          permission={permission}
-          userDept={userDept}
-          requests={requests}
-          setRequests={setRequestsState}
-          currentUser={currentUser}
+          {...common}
           focusAssetId={focusAssetId}
           onFocusCleared={() => setFocusAssetId(null)}
+          initialStatus={initialStatus}
         />
       )}
-      {page === "members" && (
-        <MemberPage
-          members={members}
-          setMembers={updateMembersWrapper}
-          assets={assets}
-          setAssets={updateAssetsWrapper}
-          history={history}
-          permission={permission}
-          userDept={userDept}
-        />
-      )}
-      {page === "history" && (
-        <HistoryPage
-          history={history}
-          setHistory={setHistoryState}
-          permission={permission}
-          userDept={userDept}
-          assets={assets}
-        />
-      )}
-      {page === "requests" && (
-        <RequestPage
-          requests={requests}
-          setRequests={setRequestsState}
-          assets={assets}
-          setAssets={updateAssetsWrapper}
-          setHistory={setHistoryState}  
-          members={members}
-          permission={permission}
-          userDept={userDept}
-          currentUser={currentUser}
-        />
-      )}
-      {page === "inspections" && (
-        <InspectionPage
-          inspections={inspections}
-          setInspections={setInspectionsState}
-          inspectionItems={inspectionItems}
-          setInspectionItems={setInspectionItemsState}
-          assets={assets}
-          setAssets={updateAssetsWrapper}
-          members={members}
-          permission={permission}
-          userDept={userDept}
-          currentUser={currentUser}
-        />
-      )}
+      {page === "members" && <MemberPage {...common} />}
+      {page === "history" && <HistoryPage {...common} />}
+      {page === "requests" && <RequestPage {...common} />}
+      {page === "inspections" && <InspectionPage />}
+      {page === "masters" && permission === "admin" && <MasterPage {...common} />}
     </div>
   );
 }

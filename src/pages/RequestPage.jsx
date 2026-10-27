@@ -17,11 +17,10 @@ import {
   RequestStatusBadge
 } from "../components/common";
 import { C } from "../constants";
-import { makeHistory } from "../utils/history";
-import { displayDate, toKST } from "../utils/date";
+import { displayDate } from "../utils/date";
 
-export default function RequestPage({ requests, setRequests, assets, setAssets, permission, userDept, currentUser }) {
-  // 폐기 자산은 요청 대상에서 제외 (setAssets에는 전체 assets를 그대로 넘겨야 함)
+export default function RequestPage({ requests, assets, permission, userDept, save }) {
+  // 폐기 자산은 요청 대상에서 제외
   const activeAssets = assets.filter(a => !a.isDisposed);
   const [filterStatus, setFilterStatus] = useState("전체");
   const [resolveOpen, setResolveOpen] = useState(false);
@@ -36,45 +35,18 @@ export default function RequestPage({ requests, setRequests, assets, setAssets, 
     ? requests
     : requests.filter(r => {
         const asset = assets.find(a => a.id === r.assetId);
-        return asset?.department === userDept;
+        return asset?.departmentId === userDept;
       });
 
   const filtered = visibleRequests.filter(r =>
     filterStatus === "전체" || r.status === filterStatus
   );
 
+  // 승인 시 자산 변경·이력은 서버가 한 트랜잭션으로 처리
   const handleResolve = async (approve) => {
     if (!selectedReq) return;
-    const updatedReq = {
-      ...selectedReq,
-      status: approve ? "승인" : "거절",
-      resolvedNote: resolveNote || (approve ? "승인 처리" : "거절 처리"),
-      resolvedDate: toKST(),
-    };
-
-    try {
-      await api.requests.update(selectedReq.id, updatedReq);
-    } catch (e) { alert("처리 실패: " + e.message); return; }
-
-    if (approve && selectedReq.type === "반납요청") {
-      const asset = assets.find(a => a.id === selectedReq.assetId);
-      // ✅ 자산 없을 경우 알림 추가
-      if (!asset) { alert("해당 자산을 찾을 수 없습니다. 자산이 삭제되었을 수 있어요."); return; }
-      const updatedAsset = { ...asset, user: "-", status: "미사용" };
-      const histories = [makeHistory("반납", asset, asset.user, "-", `요청 승인: ${resolveNote || "반납 처리"}`)];
-      // ✅ updateAssetsWrapper로 이력까지 저장
-      await setAssets(assets.map(a => a.id === asset.id ? updatedAsset : a), histories);
-    } else if (approve && selectedReq.type === "배정요청") {
-      const asset = assets.find(a => a.id === selectedReq.assetId);
-      // ✅ 자산 없을 경우 알림 추가
-      if (!asset) { alert("해당 자산을 찾을 수 없습니다. 자산이 삭제되었을 수 있어요."); return; }
-      const updatedAsset = { ...asset, user: selectedReq.targetUser, status: "사용중" };
-      const histories = [makeHistory("배정", asset, "-", selectedReq.targetUser, `요청 승인: ${resolveNote || "배정 처리"}`)];
-      // ✅ updateAssetsWrapper로 이력까지 저장
-      await setAssets(assets.map(a => a.id === asset.id ? updatedAsset : a), histories);
-    }
-
-    setRequests(requests.map(r => r.id === selectedReq.id ? updatedReq : r));
+    const ok = await save(() => api.requests.resolve(selectedReq.id, approve, resolveNote.trim() || null));
+    if (!ok) return;
     setResolveOpen(false);
     setSelectedReq(null);
     setResolveNote("");
@@ -136,10 +108,7 @@ export default function RequestPage({ requests, setRequests, assets, setAssets, 
             {permission === "admin" && (
               <button onClick={async () => {
                 if (!window.confirm("이 요청을 삭제할까요?")) return;
-                try {
-                  await api.requests.delete(r.id);
-                  setRequests(requests.filter(req => req.id !== r.id));
-                } catch (e) { alert("삭제 실패: " + e.message); }
+                await save(() => api.requests.delete(r.id));
               }}
                 style={{ background: C.dangerBg, color: C.danger, border: "none", padding: "4px 10px", borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
                 삭제
@@ -182,16 +151,16 @@ export default function RequestPage({ requests, setRequests, assets, setAssets, 
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
             <p style={{ margin: 0, fontSize: 13, color: C.textMuted }}>배정받을 자산을 선택하세요.</p>
             <div style={{ maxHeight: 240, overflowY: "auto", border: `1px solid ${C.border}`, borderRadius: 8 }}>
-              {activeAssets.filter(a => a.status === "미사용").length === 0
+              {activeAssets.filter(a => a.status === "보관").length === 0
                 ? <p style={{ padding: 20, textAlign: "center", fontSize: 13, color: C.textLight, margin: 0 }}>배정 가능한 자산이 없습니다</p>
-                : activeAssets.filter(a => a.status === "미사용").map(a => (
+                : activeAssets.filter(a => a.status === "보관").map(a => (
                   <div key={a.id} onClick={() => setAssignTarget(a)}
                     style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px",
                       borderBottom: `1px solid ${C.bg}`, cursor: "pointer",
                       background: assignTarget?.id === a.id ? "#EFF6FF" : "transparent" }}>
                     <div style={{ flex: 1 }}>
-                      <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: C.text }}>{a.name}</p>
-                      <p style={{ margin: "2px 0 0", fontSize: 12, color: C.textMuted }}>{a.type || "기타"} · {a.department || "-"} · {a.location}</p>
+                      <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: C.text }}>{a.id} {a.name}</p>
+                      <p style={{ margin: "2px 0 0", fontSize: 12, color: C.textMuted }}>{a.type} · {a.department} · {a.location || "-"}</p>
                     </div>
                     {assignTarget?.id === a.id && <span style={{ fontSize: 12, color: C.primary, fontWeight: 600 }}>선택됨</span>}
                   </div>
@@ -202,28 +171,14 @@ export default function RequestPage({ requests, setRequests, assets, setAssets, 
             {!assignTarget && <p style={{ margin: 0, fontSize: 12, color: C.danger }}>자산을 선택해 주세요.</p>}
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 8 }}>
               <Btn variant="ghost" onClick={() => { setAssignReqOpen(false); setAssignNote(""); setAssignTarget(null); }}>취소</Btn>
-              <Btn onClick={() => {
+              <Btn onClick={async () => {
                 if (!assignTarget) return;
-                const req = {
-                  type: "배정요청",
-                  assetId: assignTarget.id,
-                  assetName: assignTarget.name,
-                  requesterId: currentUser?.id || "-",
-                  requesterName: currentUser?.name || "-",
-                  targetUser: currentUser?.name || "-",
-                  status: "대기중",
-                  note: assignNote || "배정 요청",
-                  date: toKST(),
-                  resolvedNote: "-",
-                  resolvedDate: "-",
-                };
-                api.requests.create(req).then((data) => {
-                  setRequests([data, ...requests]);
-                  alert("배정 요청이 접수되었습니다.");
-                  setAssignReqOpen(false);
-                  setAssignNote("");
-                  setAssignTarget(null);
-                }).catch(e => alert("요청 실패: " + e.message));
+                const ok = await save(() => api.requests.create("배정요청", assignTarget.id, assignNote.trim() || "배정 요청"));
+                if (!ok) return;
+                alert("배정 요청이 접수되었습니다.");
+                setAssignReqOpen(false);
+                setAssignNote("");
+                setAssignTarget(null);
               }}>요청</Btn>
             </div>
           </div>

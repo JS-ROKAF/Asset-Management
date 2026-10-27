@@ -3,8 +3,8 @@ export { displayDate, displayAge, toKST };
 // 날짜 표시 헬퍼 — 레거시(연월일) + 신규(연월일 시분초) 모두 처리
 const displayDate = (dateStr) => {
   if (!dateStr) return "-";
-  // 이미 시분초가 있으면 그대로 반환
-  if (dateStr.length >= 16) return dateStr.slice(0, 16); // 'YYYY-MM-DD HH:mm'
+  // 이미 시분초가 있으면 분까지 (서버 ISO 'YYYY-MM-DDTHH:mm…'도 같은 모양으로)
+  if (dateStr.length >= 16) return dateStr.slice(0, 16).replace("T", " "); // 'YYYY-MM-DD HH:mm'
   return dateStr; // 'YYYY-MM-DD' 형식 레거시 그대로
 };
 

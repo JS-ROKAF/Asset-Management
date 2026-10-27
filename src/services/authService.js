@@ -1,9 +1,10 @@
 import { api, setToken, clearToken } from "../api";
+import { enrich } from "../utils/enrich";
 
-export const handleLogin = async (email, password, setAuthLoading, setSession) => {
+export const handleLogin = async (employeeNo, password, setAuthLoading, setSession) => {
   setAuthLoading(true);
   try {
-    const data = await api.login(email, password);
+    const data = await api.login(employeeNo, password);
     setToken(data.token);
     setSession(data.member);
   } catch (e) {
@@ -30,25 +31,16 @@ export const restoreSession = async (setSession) => {
   }
 };
 
-export const fetchAll = async (setLoading, setAssetsState, setMembersState, setHistoryState, setRequestsState, setInspectionsState, setInspectionItemsState) => {
-  setLoading(true);
+export const EMPTY_DATA = enrich({
+  corporations: [], departments: [], assetTypes: [],
+  assets: [], members: [], history: [], requests: [],
+});
+
+export const fetchAll = async () => {
   try {
-    const data = await api.bootstrap();
-    setAssetsState(data.assets || []);
-    setMembersState(data.members || []);
-    setHistoryState(data.history || []);
-    setRequestsState(data.requests || []);
-    setInspectionsState(data.inspections || []);
-    setInspectionItemsState(data.inspectionItems || []);
+    return enrich(await api.bootstrap());
   } catch (e) {
     alert(`데이터를 불러오는데 실패했습니다: ${e.message}\n새로고침을 시도해 주세요.`);
-    setAssetsState([]);
-    setMembersState([]);
-    setHistoryState([]);
-    setRequestsState([]);
-    setInspectionsState([]);
-    setInspectionItemsState([]);
-  } finally {
-    setLoading(false);
+    return EMPTY_DATA;
   }
 };
