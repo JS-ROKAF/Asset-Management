@@ -34,7 +34,7 @@ export default function HistoryPage({ history, permission, save }) {
 
   const base = visibleHistory.filter(h => {
     const matchType = filterType === "전체" || h.type === filterType;
-    const matchSearch = [h.assetName, h.assetId, h.from, h.to, h.note].some(v =>
+    const matchSearch = [h.assetName, h.assetNo, h.from, h.to, h.note].some(v =>
       v?.toLowerCase().includes(search.toLowerCase())
     );
     // 날짜 범위 필터 — h.date는 발생일(eventDate, YYYY-MM-DD)
@@ -50,7 +50,7 @@ export default function HistoryPage({ history, permission, save }) {
 
   const HISTORY_HEADERS = [
     { label: "구분", key: "type" },
-    { label: "자산번호", key: "assetId" },
+    { label: "자산번호", key: "assetNo" },
     { label: "자산명", key: "assetName" },
     { label: "이전 사용자", key: "from" },
     { label: "변경 후 사용자", key: "to" },
@@ -118,7 +118,7 @@ export default function HistoryPage({ history, permission, save }) {
               onMouseEnter={e => e.currentTarget.style.background = "#F8FAFC"}
               onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
               <td style={{ padding: "10px 12px" }}><HistoryBadge type={h.type} /></td>
-              <td style={{ padding: "10px 12px", fontSize: 13, color: C.textMuted, whiteSpace: "nowrap" }}>{h.assetId}</td>
+              <td style={{ padding: "10px 12px", fontSize: 13, color: C.textMuted, whiteSpace: "nowrap" }}>{h.assetNo}</td>
               <td style={{ padding: "10px 12px", fontSize: 14, color: C.text, fontWeight: 500 }}>{h.assetName}</td>
               <td style={{ padding: "10px 12px", fontSize: 14, color: C.textMuted }}>{displayUser(h.from)}</td>
               <td style={{ padding: "10px 12px", fontSize: 14, color: C.text, fontWeight: 500 }}>{displayUser(h.to)}</td>

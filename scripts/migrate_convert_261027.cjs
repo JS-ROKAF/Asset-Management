@@ -57,8 +57,8 @@ const surveyDept = (line) => t(survey[Number(line) - 1]?.[20]);
 
 // ── 공통 변환 ──
 const TYPE = { "데스크톱": "PC", "모니터": "MN", "노트북": "NB", "전화기": "PH", "TV 모니터": "TV", "복합기": "PR", "파쇄기": "ET" };
-const CORP_NAME = { "두래": "DR", "티앤씨": "TC", "두래티앤씨": "TC", "셀럭스": "SL" };
-const corpFromLegacy = (no) => /^DT/.test(no) ? "TC" : /^D/.test(no) ? "DR" : /^C[NO]-/.test(no) ? "SL" : "";
+const CORP_NAME = { "두래": "DR", "티앤씨": "TC", "두래티앤씨": "TC", "셀럭스": "CX" };
+const corpFromLegacy = (no) => /^DT/.test(no) ? "TC" : /^D/.test(no) ? "DR" : /^C[NO]-/.test(no) ? "CX" : "";
 const legacyOk = (no) => /^[A-Z]{2,3}-[A-Z]-\d+$/.test(no);
 
 // 제조년월: 날짜까지 있으면 월로 자른다 (제조년월은 YYYY-MM만 저장)
@@ -120,7 +120,7 @@ const fromSurvey = (sheet, r, cols) => {
 };
 
 const push = (src, x) => add(src, {
-  자산번호: "", 구자산번호: x.legacyNo, 법인코드: x.corp, 유형코드: x.type, ...x.fields,
+  자산번호: "", 구자산번호: x.legacyNo, 법인코드: x.corp, 대분류코드: "IT", 유형코드: x.type, ...x.fields,
   부서: x.dept, 상태: x.u ? "사용중" : "미확인", "사용자(이름)": x.u ? x.u.user : "", notes: x.notes,
 });
 
@@ -155,7 +155,7 @@ for (const [sheet, src] of [["④ 대장에만 있음", "이관 ④대장에만 
     if (t(r[6])) notes.push(`대장 상태: ${t(r[6])}`);
     if (t(r[10])) notes.push(`대장 비고: ${t(r[10])}`);
     add(src, {
-      자산번호: "", 구자산번호: legacyNo, 법인코드: corp, 유형코드: TYPE[t(r[2])] || "", 자산명: [t(r[3]), t(r[2])].filter(Boolean).join(" "),
+      자산번호: "", 구자산번호: legacyNo, 법인코드: corp, 대분류코드: "IT", 유형코드: TYPE[t(r[2])] || "", 자산명: [t(r[3]), t(r[2])].filter(Boolean).join(" "),
       모델명: "", 시리얼: "", 제조년월: "", 취득일자: r[8], 취득금액: r[7], 구입처: t(r[9]), 구매품의번호: "",
       부서: dept, 상태: "미확인", "사용자(이름)": "", 지급일: "", notes,
     });
@@ -163,7 +163,7 @@ for (const [sheet, src] of [["④ 대장에만 있음", "이관 ④대장에만 
 }
 
 fs.writeFileSync(path.join(outDir, "rows.json"), JSON.stringify({ members, assets }));
-const ASSET_COLS = ["자산번호", "구자산번호", "법인코드", "유형코드", "자산명", "모델명", "시리얼", "제조년월", "CPU", "RAM", "저장장치", "OS",
+const ASSET_COLS = ["자산번호", "구자산번호", "법인코드", "대분류코드", "유형코드", "자산명", "모델명", "시리얼", "제조년월", "CPU", "RAM", "저장장치", "OS",
   "취득일자", "취득금액", "구입처", "구매품의번호", "보증만료일", "부서", "위치", "상태", "사용자(이름)", "지급일", "비고"];
 const wb = XLSX.utils.book_new();
 XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(members, { header: ["이름", "부서", "파트", "직위", "이메일", "재직상태"] }), "구성원목록");

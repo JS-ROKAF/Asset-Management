@@ -462,6 +462,14 @@ src/
 - **NAS 매일 백업**: 작업 스케줄러 `AssetHub_DbBackup` 매일 04:40 → `pythonw backend/backup_db.py` → `\\Durae_Nas_HQ\NetBackup\AssetHub\assethub_YYYYMMDD.db`, 14세대. 결과는 `db/backup_nas.log`(OK/FAIL 한 줄씩). HR AGENT `backup_db.py`와 같은 방식 — **작업 계정은 Interactive 필수**(SYSTEM은 NAS 자격 증명에 접근 못 함)
 - 이 전환부터는 실데이터가 있으므로 **DB 재생성 금지**. 스키마 변경은 `MIGRATIONS`에 항목 추가로만
 
+### 2026-10-27 — 자산번호 체계 B안 (마이그레이션 2, user_version 2)
+
+- 형식: `{법인}-{대분류}-{유형}-{4자리}` (예: `DR-IT-NB-0001`). 대분류 `asset_categories` IT(IT기기)·FN(가구·비품)·RE(연구장비), 유형은 대분류 하나에 소속(`asset_types.categoryId`). 셀럭스 법인 코드 SL → **CX**
+- **자산번호는 바뀔 수 있다.** 라벨에는 QR만 인쇄하므로, QR·이력·요청·실사는 바뀌지 않는 내부 정수 키 `assets.id`를 쓰고, 사람이 보는 번호는 `assets.assetNo`(UNIQUE)로 분리. QR 주소 = `#/assets/{내부 id}`
+- 법인이나 유형을 바꾸면 서버가 새 번호를 발급하고 `번호변경` 이력(`이전 → 새 번호`)을 남긴다. 옛 번호는 재사용하지 않음(`asset_seq` 카운터)
+- 마이그레이션은 기존 번호의 4자리를 유지하고 대분류 IT를 끼움(`SL-MN-0007` → `CX-IT-MN-0007`). 기존 유형은 전부 IT 소속
+- 엑셀 자산 양식에 "대분류코드" 칸 추가(법인코드 다음). 기준정보 화면에 "대분류" 탭 추가
+
 ---
 
 ### 2순위 — 단기 (임팩트 높음 / 난이도 중간)

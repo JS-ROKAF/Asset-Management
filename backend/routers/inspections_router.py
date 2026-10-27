@@ -53,7 +53,7 @@ def bulk_insert_checks(rows: list[dict[str, Any]], user: dict = Depends(get_curr
 @router.get("/checks")
 def list_checks(
     inspectionId: int | None = None,
-    assetId: str | None = None,
+    assetId: int | None = None,
     user: dict = Depends(get_current_user),
 ):
     sql = "SELECT * FROM inspection_checks WHERE 1=1"

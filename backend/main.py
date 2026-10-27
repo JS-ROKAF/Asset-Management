@@ -33,7 +33,9 @@ app.add_middleware(
 # DB 제약 위반을 500 대신 400 + 읽을 수 있는 문구로
 INTEGRITY_MESSAGES = {
     "assets.serial": "이미 등록된 시리얼입니다.",
-    "assets.id": "이미 있는 자산번호입니다.",
+    "assets.assetNo": "이미 있는 자산번호입니다.",
+    "asset_types.categoryId, asset_types.code": "같은 대분류에 이미 있는 유형 코드입니다.",
+    "asset_categories.code": "이미 있는 대분류 코드입니다.",
     "members.loginId": "이미 쓰이는 아이디입니다.",
     "departments.name": "이미 있는 부서명입니다.",
     "members.email": "이미 등록된 이메일입니다.",

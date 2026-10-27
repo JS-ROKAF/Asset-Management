@@ -159,7 +159,7 @@ export default function RequestPage({ requests, assets, permission, userDept, sa
                       borderBottom: `1px solid ${C.bg}`, cursor: "pointer",
                       background: assignTarget?.id === a.id ? "#EFF6FF" : "transparent" }}>
                     <div style={{ flex: 1 }}>
-                      <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: C.text }}>{a.id} {a.name}</p>
+                      <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: C.text }}>{a.assetNo} {a.name}</p>
                       <p style={{ margin: "2px 0 0", fontSize: 12, color: C.textMuted }}>{a.type} · {a.department} · {a.location || "-"}</p>
                     </div>
                     {assignTarget?.id === a.id && <span style={{ fontSize: 12, color: C.primary, fontWeight: 600 }}>선택됨</span>}

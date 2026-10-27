@@ -17,7 +17,7 @@ function useSort(data, defaultKey, defaultDir = "desc") {
     const cmp = String(va).localeCompare(String(vb), "ko");
     if (cmp !== 0) return sortDir === "asc" ? cmp : -cmp;
     // 같은 값이면 id 기준 내림차순 (최근 생성 순)
-    return String(b.id).localeCompare(String(a.id));
+    return b.id - a.id;
   });
 
   return { sorted, sortKey, sortDir, handleSort };

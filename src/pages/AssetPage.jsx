@@ -73,7 +73,7 @@ function AssetForm({ form, setForm, corporations, departments, assetTypes, membe
   const set = (k) => (v) => setForm({ ...form, [k]: v });
   const type = assetTypes.find(t => String(t.id) === form.typeId);
   const activeOpt = (rows, label) => [{ value: "", label: "선택해 주세요" },
-    ...rows.filter(r => r.active || String(r.id) === form[label]).map(r => ({ value: String(r.id), label: r.code ? `${r.code} · ${r.name}` : r.name }))];
+    ...rows.filter(r => r.active || String(r.id) === form[label]).map(r => ({ value: String(r.id), label: r.label || (r.code ? `${r.code} · ${r.name}` : r.name) }))];
 
   // 상태–사용자 연동: 사용자를 고르면 사용중, 사용중이 아닌 상태를 고르면 사용자 해제
   const setStatus = (s) => setForm({ ...form, status: s, memberId: s === "사용중" ? form.memberId : null });
@@ -86,13 +86,13 @@ function AssetForm({ form, setForm, corporations, departments, assetTypes, membe
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
         <SelectField label="법인 *" value={form.corporationId} onChange={set("corporationId")}
-          options={activeOpt(corporations, "corporationId")} disabled={!isCreate} />
+          options={activeOpt(corporations, "corporationId")} />
         <SelectField label="유형 *" value={form.typeId} onChange={set("typeId")}
           options={activeOpt(assetTypes, "typeId")} />
         <InputField label="자산명" value={form.name} onChange={set("name")} />
       </div>
       {!isCreate && (
-        <p style={{ margin: "-6px 0 0", fontSize: 12, color: C.textLight }}>자산번호는 최초 등록 기준이라 법인·유형을 바꿔도 번호는 그대로입니다.</p>
+        <p style={{ margin: "-6px 0 0", fontSize: 12, color: C.textLight }}>법인이나 유형을 바꾸면 자산번호가 새로 발급됩니다. 예전 번호는 이력에 남고, 붙어 있는 QR은 그대로 쓸 수 있습니다.</p>
       )}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
         <SelectField label="사용부서" value={form.departmentId} onChange={set("departmentId")}
@@ -148,7 +148,7 @@ const EMPTY_EVENT = { eventDate: "", memo: "" };
 const eventPayload = (ev) => ({ eventDate: ev.eventDate || null, memo: ev.memo.trim() || null });
 
 // ── 자산관리 ──
-export default function AssetPage({ assets, history, members, corporations, departments, assetTypes, permission, userDept, currentUser, save, refresh, focusAssetId, onFocusCleared, initialStatus }) {
+export default function AssetPage({ assets, history, members, corporations, departments, assetCategories, assetTypes, permission, userDept, currentUser, save, refresh, focusAssetId, onFocusCleared, initialStatus }) {
   // 부서장/뷰어면 자기 부서 자산만
   const visibleAssets = (permission === "admin" ? assets : assets.filter(a => a.departmentId === userDept))
     .filter(a => !a.isDisposed);
@@ -196,7 +196,7 @@ export default function AssetPage({ assets, history, members, corporations, depa
     (filterStatus === "전체" || a.status === filterStatus) &&
     (!filterDept || String(a.departmentId) === filterDept) &&
     (!filterType || String(a.typeId) === filterType) &&
-    [a.id, a.legacyNo, a.name, a.user, a.location, a.department, a.model, a.serial, a.vendor, a.note]
+    [a.assetNo, a.legacyNo, a.name, a.user, a.location, a.department, a.model, a.serial, a.vendor, a.note]
       .some(v => v?.toLowerCase().includes(q))
   );
   const { sorted, sortKey, sortDir, handleSort } = useSort(base, "date");
@@ -211,10 +211,10 @@ export default function AssetPage({ assets, history, members, corporations, depa
     const fields = toPayload(form);
     if (!assetTypes.find(t => t.id === fields.typeId)?.hasSpecs) SPEC_KEYS.forEach(k => delete fields[k]);
     const created = await save(() => api.assets.create({
-      fields, quantity, id: manualId.trim() || null, ...eventPayload(addEvent),
+      fields, quantity, assetNo: manualId.trim() || null, ...eventPayload(addEvent),
     }));
     if (!created) return;
-    alert(`등록되었습니다: ${created.map(a => a.id).join(", ")}`);
+    alert(`등록되었습니다: ${created.map(a => a.assetNo).join(", ")}`);
     setAddOpen(false);
     setForm(EMPTY_FORM);
     setQuantity(1);
@@ -273,7 +273,7 @@ export default function AssetPage({ assets, history, members, corporations, depa
     : [];
 
   const ASSET_HEADERS = [
-    { label: "자산번호", key: "id", width: 110 },
+    { label: "자산번호", key: "assetNo", width: 110 },
     { label: "구번호", key: "legacyNo" },
     { label: "자산명", key: "name" },
     { label: "유형", key: "type" },
@@ -292,7 +292,7 @@ export default function AssetPage({ assets, history, members, corporations, depa
     <select value={value} onChange={e => onChange(e.target.value)}
       style={{ border: `1px solid ${C.border}`, borderRadius: 8, padding: "9px 12px", fontSize: 13, color: C.textMuted, outline: "none", background: C.card, cursor: "pointer" }}>
       <option value="">{label} 전체</option>
-      {options.map(o => <option key={o.id} value={String(o.id)}>{o.name}</option>)}
+      {options.map(o => <option key={o.id} value={String(o.id)}>{o.label || o.name}</option>)}
     </select>
   );
 
@@ -311,7 +311,7 @@ export default function AssetPage({ assets, history, members, corporations, depa
       />
       {importOpen && (
         <ImportModal title="자산 엑셀 가져오기 (구성원을 먼저 등록하세요)" templateName="자산등록_양식.xlsx"
-          makeTemplate={() => assetTemplate({ corporations, departments, assetTypes })}
+          makeTemplate={() => assetTemplate({ corporations, departments, assetCategories, assetTypes })}
           run={api.assets.import}
           summary={r => `등록 ${r.create}건 (${Object.entries(r.statuses).map(([s, n]) => `${s} ${n}`).join(", ") || "-"})`}
           onClose={() => setImportOpen(false)}
@@ -355,7 +355,7 @@ export default function AssetPage({ assets, history, members, corporations, depa
                 style={{ cursor: "pointer", width: 15, height: 15 }}
               />
             </td>
-            <td style={{ ...td, fontSize: 13, color: C.textMuted, fontWeight: 600 }}>{a.id}</td>
+            <td style={{ ...td, fontSize: 13, color: C.textMuted, fontWeight: 600 }}>{a.assetNo}</td>
             <td style={{ ...td, fontSize: 13, color: C.textLight }}>{a.legacyNo || "-"}</td>
             <td style={{ ...td, fontWeight: 500 }}>{a.name || "-"}</td>
             <td style={{ ...td, color: C.textMuted }}>{a.type}</td>
@@ -418,7 +418,7 @@ export default function AssetPage({ assets, history, members, corporations, depa
                 const a = assets.find(a => a.id === id);
                 return a ? (
                   <div key={id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                    <span style={{ fontSize: 13, color: C.text }}>{a.id} {a.name}</span>
+                    <span style={{ fontSize: 13, color: C.text }}>{a.assetNo} {a.name}</span>
                     <span style={{ fontSize: 12, color: C.textMuted }}>{displayUser(a.user)} · {a.department}</span>
                   </div>
                 ) : null;
@@ -478,7 +478,7 @@ export default function AssetPage({ assets, history, members, corporations, depa
                 />
               </div>
               <InputField label="자산번호 직접 입력 (비우면 자동 발급, 수량 1개일 때만)" value={manualId}
-                onChange={setManualId} placeholder="예: DR-NB-0001" />
+                onChange={setManualId} placeholder="예: DR-IT-NB-0001" />
             </div>
             <EventFields value={addEvent} onChange={setAddEvent} />
             {quantity > 1 && (
@@ -496,7 +496,7 @@ export default function AssetPage({ assets, history, members, corporations, depa
 
       {/* 자산 상세 / 수정 모달 */}
       {selected && (
-        <Modal title={editBase ? `자산 수정 — ${selected.id}` : "자산 상세"} onClose={() => { setSelectedId(null); setEditBase(null); }} wide>
+        <Modal title={editBase ? `자산 수정 — ${selected.assetNo}` : "자산 상세"} onClose={() => { setSelectedId(null); setEditBase(null); }} wide>
           {editBase ? (
             <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
               <AssetForm form={editForm} setForm={setEditForm} {...masters} />
@@ -521,7 +521,7 @@ export default function AssetPage({ assets, history, members, corporations, depa
             <div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 20 }}>
                 {[
-                  { label: "자산번호", value: selected.id },
+                  { label: "자산번호", value: selected.assetNo },
                   { label: "구자산번호", value: selected.legacyNo || "-" },
                   { label: "법인 · 유형", value: `${selected.corporation} · ${selected.type}` },
                   { label: "자산명", value: selected.name || "-" },
@@ -572,7 +572,7 @@ export default function AssetPage({ assets, history, members, corporations, depa
                       onClick={e => e.stopPropagation()}
                     >
                       <QRCodeSVG value={`${window.location.origin}/#/assets/${selected.id}`} size={200} />
-                      <p style={{ margin: 0, fontWeight: 800, fontSize: 20, color: "#0F172A", letterSpacing: 1 }}>{selected.id}</p>
+                      <p style={{ margin: 0, fontWeight: 800, fontSize: 20, color: "#0F172A", letterSpacing: 1 }}>{selected.assetNo}</p>
                       <p style={{ margin: 0, fontSize: 13, color: "#64748B" }}>{selected.name || selected.type}</p>
                       <button
                         onClick={() => {
@@ -618,7 +618,7 @@ export default function AssetPage({ assets, history, members, corporations, depa
 
       {/* 폐기 처리 모달 */}
       {disposeOpen && selected && (
-        <Modal title={`자산 폐기 — ${selected.id}`} onClose={() => { setDisposeOpen(false); setDisposeForm({ reason: "", method: "폐기" }); }}>
+        <Modal title={`자산 폐기 — ${selected.assetNo}`} onClose={() => { setDisposeOpen(false); setDisposeForm({ reason: "", method: "폐기" }); }}>
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
             <div style={{ background: C.dangerBg, borderRadius: 8, padding: "10px 14px", fontSize: 13, color: "#991B1B" }}>
               ⚠️ 폐기 처리된 자산은 목록에서 제외됩니다. 사용자가 있으면 반납 후 폐기됩니다. 이력은 영구 보존됩니다.

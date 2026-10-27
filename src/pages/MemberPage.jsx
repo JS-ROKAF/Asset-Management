@@ -206,7 +206,7 @@ export default function MemberPage({ members, assets, history, departments, perm
                 <div style={{ borderTop: `1px solid ${C.bg}`, paddingTop: 12 }}>
                   <p style={{ margin: "0 0 6px", fontSize: 11, color: C.textLight, fontWeight: 600 }}>배정 자산 {myAssets.length}개</p>
                   {myAssets.length > 0
-                    ? myAssets.map(a => <span key={a.id} style={{ display: "inline-block", background: C.bg, color: "#475569", fontSize: 11, padding: "2px 8px", borderRadius: 6, marginRight: 4, marginBottom: 4 }}>{a.id} {a.type}</span>)
+                    ? myAssets.map(a => <span key={a.id} style={{ display: "inline-block", background: C.bg, color: "#475569", fontSize: 11, padding: "2px 8px", borderRadius: 6, marginRight: 4, marginBottom: 4 }}>{a.assetNo} {a.type}</span>)
                     : <p style={{ margin: 0, fontSize: 12, color: "#CBD5E1" }}>배정된 자산 없음</p>}
                 </div>
               </div>
@@ -253,7 +253,7 @@ export default function MemberPage({ members, assets, history, departments, perm
                       : (
                         <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
                           <span style={{ background: C.bg, color: "#475569", fontSize: 11, padding: "2px 8px", borderRadius: 6, whiteSpace: "nowrap" }}>
-                            {myAssets[0].id}
+                            {myAssets[0].assetNo}
                           </span>
                           {myAssets.length > 1 && (
                             <span style={{ background: "#EDE9FE", color: "#7C3AED", fontSize: 11, fontWeight: 600, padding: "2px 8px", borderRadius: 6, whiteSpace: "nowrap" }}>
@@ -340,7 +340,7 @@ export default function MemberPage({ members, assets, history, departments, perm
                 {memberAssets(selected.id).length > 0
                   ? memberAssets(selected.id).map(a => (
                     <div key={a.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                      <span style={{ fontSize: 13, color: C.text }}>{a.id} {a.name || a.type}</span>
+                      <span style={{ fontSize: 13, color: C.text }}>{a.assetNo} {a.name || a.type}</span>
                       <StatusBadge status={a.status} />
                     </div>
                   ))
@@ -356,7 +356,7 @@ export default function MemberPage({ members, assets, history, departments, perm
                     ? memberHistory.map(h => (
                       <div key={h.id} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8, flexWrap: "wrap" }}>
                         <HistoryBadge type={h.type} />
-                        <span style={{ fontSize: 13, color: C.text, fontWeight: 500, flex: 1, minWidth: 100 }}>{h.assetId} {h.assetName !== h.assetId ? h.assetName : ""}</span>
+                        <span style={{ fontSize: 13, color: C.text, fontWeight: 500, flex: 1, minWidth: 100 }}>{h.assetNo} {h.assetName !== h.assetNo ? h.assetName : ""}</span>
                         <span style={{ fontSize: 12, color: C.textMuted }}>{displayUser(h.from)} → {displayUser(h.to)}</span>
                         <span style={{ fontSize: 12, color: C.textLight, whiteSpace: "nowrap" }}>{displayDate(h.date)}</span>
                       </div>

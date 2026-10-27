@@ -17,8 +17,12 @@ SPECS = {
         "table": "departments", "fields": ["name", "active"], "locked": [],
         "used": "SELECT 1 FROM assets WHERE departmentId = :id UNION ALL SELECT 1 FROM members WHERE departmentId = :id LIMIT 1",
     },
+    "categories": {
+        "table": "asset_categories", "fields": ["code", "name", "active"], "locked": ["code"],
+        "used": "SELECT 1 FROM asset_types WHERE categoryId = :id LIMIT 1",
+    },
     "types": {
-        "table": "asset_types", "fields": ["code", "name", "hasSpecs", "active"], "locked": ["code"],
+        "table": "asset_types", "fields": ["categoryId", "code", "name", "hasSpecs", "active"], "locked": ["categoryId", "code"],
         "used": "SELECT 1 FROM assets WHERE typeId = :id LIMIT 1",
     },
 }

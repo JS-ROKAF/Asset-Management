@@ -16,6 +16,7 @@ def bootstrap(user: dict = Depends(get_current_user)):
         data = {
             "corporations": _all(conn, "SELECT * FROM corporations ORDER BY id"),
             "departments": _all(conn, "SELECT * FROM departments ORDER BY id"),
+            "assetCategories": _all(conn, "SELECT * FROM asset_categories ORDER BY id"),
             "assetTypes": _all(conn, "SELECT * FROM asset_types ORDER BY id"),
             "assets": _all(conn, "SELECT * FROM assets"),
             "members": _all(conn, f"SELECT {MEMBER_PUBLIC}" + (", loginId" if user["permission"] == "admin" else "") + " FROM members"),

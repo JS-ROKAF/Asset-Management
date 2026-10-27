@@ -48,7 +48,8 @@ def add_history(conn, user, asset_id, type_, event_date, from_id=None, to_id=Non
     )
 
 
-def get_asset(conn, asset_id) -> dict:
+def get_asset(conn, asset_id: int) -> dict:
+    """asset_id = 바뀌지 않는 내부 키(QR·이력이 가리키는 값). 자산번호(assetNo)는 표시용이라 바뀔 수 있다"""
     row = conn.execute("SELECT * FROM assets WHERE id = ?", (asset_id,)).fetchone()
     if not row:
         raise HTTPException(404, f"자산을 찾을 수 없습니다: {asset_id}")
@@ -99,7 +100,7 @@ def repair_detail(repair: dict | None) -> str:
 
 def apply_change(conn, user, asset: dict, changes: dict, event_date=None, memo=None, repair=None, scope=True) -> dict:
     if asset["isDisposed"]:
-        raise HTTPException(400, f"폐기된 자산은 수정할 수 없습니다: {asset['id']}")
+        raise HTTPException(400, f"폐기된 자산은 수정할 수 없습니다: {asset['assetNo']}")
     changes = _derive_status(asset, clean(changes))
     changes = {k: v for k, v in changes.items() if asset[k] != v}
     if scope:
@@ -109,8 +110,15 @@ def apply_change(conn, user, asset: dict, changes: dict, event_date=None, memo=N
     if changes.get("memberId") is not None:
         _check_member(conn, changes["memberId"])
 
+    # 법인·유형이 바뀌면 번호를 새로 받는다 (QR은 내부 키라 그대로). 예전 번호는 번호변경 이력에 남긴다
+    renumber = "corporationId" in changes or "typeId" in changes
+    if renumber:
+        changes["assetNo"] = issue_no(conn, changes.get("corporationId", asset["corporationId"]),
+                                      changes.get("typeId", asset["typeId"]))
     set_sql = ", ".join(f'"{k}" = ?' for k in changes)
     conn.execute(f'UPDATE assets SET {set_sql}, updatedAt = ? WHERE id = ?', [*changes.values(), now(), asset["id"]])
+    if renumber:
+        add_history(conn, user, asset["id"], "번호변경", event_date, detail=f"{asset['assetNo']} → {changes['assetNo']}", note=memo)
 
     aid, old_status, new_status = asset["id"], asset["status"], changes.get("status", asset["status"])
     status_note = f"상태: {old_status} → {new_status}" if new_status != old_status else None
@@ -136,14 +144,17 @@ def apply_change(conn, user, asset: dict, changes: dict, event_date=None, memo=N
     return get_asset(conn, aid)
 
 
-def issue_id(conn, corporation_id, type_id, manual: str | None = None) -> str:
+def issue_no(conn, corporation_id, type_id, manual: str | None = None) -> str:
+    """자산번호 {법인}-{대분류}-{유형}-{4자리}. 카운터는 (법인, 유형)별 — 유형이 대분류에 속하므로 대분류별과 같다"""
     corp = conn.execute("SELECT code, active FROM corporations WHERE id = ?", (corporation_id,)).fetchone()
-    typ = conn.execute("SELECT code, active FROM asset_types WHERE id = ?", (type_id,)).fetchone()
+    typ = conn.execute("""SELECT t.code, t.active, g.code catCode, g.active catActive
+                          FROM asset_types t JOIN asset_categories g ON g.id = t.categoryId WHERE t.id = ?""",
+                       (type_id,)).fetchone()
     if not corp or not corp["active"]:
         raise HTTPException(400, "없거나 사용하지 않는 법인입니다.")
-    if not typ or not typ["active"]:
+    if not typ or not typ["active"] or not typ["catActive"]:
         raise HTTPException(400, "없거나 사용하지 않는 유형입니다.")
-    prefix = f"{corp['code']}-{typ['code']}-"
+    prefix = f"{corp['code']}-{typ['catCode']}-{typ['code']}-"
     if manual:
         m = re.fullmatch(re.escape(prefix) + r"(\d{4})", manual.strip())
         if not m:
@@ -165,7 +176,7 @@ def issue_id(conn, corporation_id, type_id, manual: str | None = None) -> str:
     return f"{prefix}{n:04d}"
 
 
-def create_asset(conn, user, fields: dict, manual_id=None, event_date=None, memo=None, intake_note=None) -> dict:
+def create_asset(conn, user, fields: dict, manual_no=None, event_date=None, memo=None, intake_note=None) -> dict:
     fields = _derive_status({"status": None}, clean(fields))
     fields.setdefault("status", "보관")
     for k in ("corporationId", "typeId"):
@@ -174,12 +185,12 @@ def create_asset(conn, user, fields: dict, manual_id=None, event_date=None, memo
     check_scope(user, fields.get("departmentId"))
     if fields.get("memberId") is not None:
         _check_member(conn, fields["memberId"])
-    aid = issue_id(conn, fields["corporationId"], fields["typeId"], manual_id)
+    asset_no = issue_no(conn, fields["corporationId"], fields["typeId"], manual_no)
     ts = now()
-    cols = ["id", *fields, "createdAt", "updatedAt"]
+    cols = ["assetNo", *fields, "createdAt", "updatedAt"]
     col_sql = ", ".join(f'"{c}"' for c in cols)
-    conn.execute(f"INSERT INTO assets ({col_sql}) VALUES ({', '.join('?' for _ in cols)})",
-                 [aid, *fields.values(), ts, ts])
+    aid = conn.execute(f"INSERT INTO assets ({col_sql}) VALUES ({', '.join('?' for _ in cols)})",
+                       [asset_no, *fields.values(), ts, ts]).lastrowid
     add_history(conn, user, aid, "입고", None, detail=intake_note, note=memo)
     if fields.get("memberId") is not None:
         add_history(conn, user, aid, "배정", event_date, to_id=fields["memberId"], note=memo)
@@ -188,7 +199,7 @@ def create_asset(conn, user, fields: dict, manual_id=None, event_date=None, memo
 
 def dispose_asset(conn, user, asset: dict, method, reason, event_date=None) -> dict:
     if asset["isDisposed"]:
-        raise HTTPException(400, f"이미 폐기된 자산입니다: {asset['id']}")
+        raise HTTPException(400, f"이미 폐기된 자산입니다: {asset['assetNo']}")
     if asset["memberId"] is not None:
         asset = apply_change(conn, user, asset, {"memberId": None}, event_date, "폐기 전 반납")
     check_scope(user, asset["departmentId"])

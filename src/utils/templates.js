@@ -24,25 +24,27 @@ const codeSheet = (columns) => {
   return ws;
 };
 
-export function assetTemplate({ corporations, departments, assetTypes }) {
+export function assetTemplate({ corporations, departments, assetCategories, assetTypes }) {
   const wb = XLSX.utils.book_new();
   const corp = corporations.find(c => c.active)?.code ?? "DR";
   const dept = departments.find(d => d.active);
   XLSX.utils.book_append_sheet(wb, inputSheet(
-    ["자산번호", "구자산번호", "법인코드", "유형코드", "자산명", "모델명", "시리얼", "제조년월",
+    ["자산번호", "구자산번호", "법인코드", "대분류코드", "유형코드", "자산명", "모델명", "시리얼", "제조년월",
       "CPU", "RAM", "저장장치", "OS", "취득일자", "취득금액", "구입처", "구매품의번호",
       "보증만료일", "부서", "위치", "상태", "사용자(이름)", "지급일", "비고"],
-    ["예시(이 행은 지우세요)", "IT-2018-001", corp, "NB", "업무용 노트북", "LG gram 16", "SN12345", "2018-08",
+    ["예시(이 행은 지우세요)", "IT-2018-001", corp, "IT", "NB", "업무용 노트북", "LG gram 16", "SN12345", "2018-08",
       "i5-8250U", "16GB", "SSD 512GB", "Windows 11", "2018-09", "1,250,000", "LG전자", "",
       "2021-09-30", dept?.name ?? "", "본사 3층", "사용중", "홍길동", "2023-03-02", ""],
   ), "자산목록");
   XLSX.utils.book_append_sheet(wb, codeSheet([
     ["법인코드", corporations.filter(c => c.active).map(c => `${c.code} (${c.name})`)],
-    ["유형코드", assetTypes.filter(t => t.active).map(t => `${t.code} (${t.name}${t.hasSpecs ? ", 사양 입력" : ""})`)],
+    ["대분류코드", assetCategories.filter(g => g.active).map(g => `${g.code} (${g.name})`)],
+    ["유형코드", assetTypes.filter(t => t.active).map(t => `${t.categoryCode}-${t.code} (${t.name}${t.hasSpecs ? ", 사양 입력" : ""})`)],
     ["부서", departments.filter(d => d.active).map(d => d.name)],
     ["상태", ["사용중 (사용자 필수)", "공용", "보관", "수리중", "분실", "미확인 (사용자 모름)"]],
     ["작성 규칙", [
-      "자산번호: 비우면 자동 발급 ({법인}-{유형}-0000)",
+      "자산번호: 비우면 자동 발급 ({법인}-{대분류}-{유형}-0000, 예: DR-IT-NB-0001)",
+      "유형코드: 코드표의 대분류-유형에서 유형 부분만 (예: IT-NB면 대분류코드 IT, 유형코드 NB)",
       "사용자(이름): 사용중일 때만, 구성원 먼저 등록",
       "같은 이름이 2명 이상이면 이름/부서 (예: 홍길동/기술연구소)",
       "지급일: 사용자가 있을 때만 (배정 이력 날짜)",

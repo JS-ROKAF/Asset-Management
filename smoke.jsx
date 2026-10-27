@@ -36,20 +36,21 @@ for (const [el, expected] of cases) {
 const data = enrich({
   corporations: [{ id: 1, code: "DR", name: "두래", active: 1 }],
   departments: [{ id: 1, name: "경영", active: 1 }],
-  assetTypes: [{ id: 1, code: "NB", name: "노트북", hasSpecs: 1, active: 1 }],
+  assetCategories: [{ id: 1, code: "IT", name: "IT기기", active: 1 }],
+  assetTypes: [{ id: 1, categoryId: 1, code: "NB", name: "노트북", hasSpecs: 1, active: 1 }],
   members: [{ id: 1, name: "홍길동", departmentId: 1, part: "합성파트", position: "대리", permission: "admin", loginId: "hong", status: "재직", email: null }],
   assets: [
-    { id: "DR-NB-0001", typeId: 1, corporationId: 1, departmentId: 1, memberId: 1, status: "사용중", name: "업무용", warrantyExpiry: "2020-01-01", purchaseDate: "2018-09", purchaseCost: 1000000, createdAt: "2026-11-01T09:00:00.000000", updatedAt: "x", isDisposed: 0 },
-    { id: "DR-NB-0002", typeId: 1, corporationId: 1, departmentId: null, memberId: null, status: "미확인", createdAt: "2026-11-01T09:00:00.000000", updatedAt: "x", isDisposed: 0 },
+    { id: 1, assetNo: "DR-IT-NB-0001", typeId: 1, corporationId: 1, departmentId: 1, memberId: 1, status: "사용중", name: "업무용", warrantyExpiry: "2020-01-01", purchaseDate: "2018-09", purchaseCost: 1000000, createdAt: "2026-11-01T09:00:00.000000", updatedAt: "x", isDisposed: 0 },
+    { id: 2, assetNo: "DR-IT-NB-0002", typeId: 1, corporationId: 1, departmentId: null, memberId: null, status: "미확인", createdAt: "2026-11-01T09:00:00.000000", updatedAt: "x", isDisposed: 0 },
   ],
-  history: [{ id: 1, assetId: "DR-NB-0001", type: "배정", fromMemberId: null, toMemberId: 1, detail: null, note: "지급", eventDate: "2023-03-02", recordedAt: "2026-11-01T09:00:00", recordedBy: 1 }],
-  requests: [{ id: 1, type: "반납요청", assetId: "DR-NB-0001", requesterId: 1, targetMemberId: null, status: "대기중", note: "반납", date: "2026-11-02" }],
+  history: [{ id: 1, assetId: 1, type: "배정", fromMemberId: null, toMemberId: 1, detail: null, note: "지급", eventDate: "2023-03-02", recordedAt: "2026-11-01T09:00:00", recordedBy: 1 }],
+  requests: [{ id: 1, type: "반납요청", assetId: 1, requesterId: 1, targetMemberId: null, status: "대기중", note: "반납", date: "2026-11-02" }],
 });
 assert.equal(data.assets[0].user, "홍길동");
 assert.equal(data.history[0].to, "홍길동");
 const props = { ...data, permission: "admin", userDept: 1, currentUser: data.members[0], save: async () => null, onNavigate: () => {}, onFocusCleared: () => {} };
 const pages = [
-  [Dashboard, /미확인/], [AssetPage, /DR-NB-0002/], [MemberPage, /홍길동/],
+  [Dashboard, /미확인/], [AssetPage, /DR-IT-NB-0002/], [MemberPage, /홍길동/],
   [HistoryPage, /지급/], [RequestPage, /반납요청/], [MasterPage, /두래/],
 ];
 for (const [Page, expected] of pages) {

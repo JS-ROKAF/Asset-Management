@@ -50,14 +50,14 @@ with db() as conn:
 admin = {"id": 1, "permission": "admin", "departmentId": None}
 create(CreateReq(fields={"corporationId": 1, "typeId": 1, "serial": "OLD"}), admin)   # DR-NB-0001 기존
 
-base = {"법인코드": "DR", "유형코드": "NB", "상태": "보관"}
+base = {"법인코드": "DR", "대분류코드": "IT", "유형코드": "NB", "상태": "보관"}
 bad = [
     {**base, "사용자(이름)": "홍길동"},                             # 2: 보관인데 사용자
     {**base, "상태": "사용중"},                                     # 3: 사용중인데 사용자 없음
     {**base, "상태": "미사용"},                                     # 4: 구 상태값
     {**base, "시리얼": "OLD"},                                      # 5: DB 시리얼 중복
-    {**base, "자산번호": "DR-NB-0001"},                             # 6: DB 번호 중복
-    {**base, "자산번호": "TC-NB-0001"},                             # 7: 법인 불일치
+    {**base, "자산번호": "DR-IT-NB-0001"},                          # 6: DB 번호 중복
+    {**base, "자산번호": "TC-IT-NB-0001"},                          # 7: 법인 불일치
     {**base, "상태": "사용중", "사용자(이름)": "퇴사자"},            # 8: 퇴직자는 재직자 중에 없음
     {**base, "지급일": "2023-03-02"},                               # 9: 사용자 없이 지급일
     {**base, "부서": "DR | 경영"},                                  # 10: 법인|부서 형식은 없어짐
@@ -66,24 +66,27 @@ bad = [
     {**base, "자산번호": "예시(이 행은 지우세요)"},                 # 13: 양식 예시 행
     {**base, "상태": "사용중", "사용자(이름)": "김철수"},            # 14: 동명이인
     {**base, "상태": "사용중", "사용자(이름)": "없는사람"},          # 15
+    {**base, "대분류코드": "FN"},                                   # 16: FN에는 NB 유형 없음
+    {**base, "대분류코드": "ZZ"},                                   # 17: 없는 대분류 (유형은 판단 안 함)
 ]
 res = import_assets(ImportReq(rows=bad), dry_run=False, user=admin)
 assert not res["saved"] and res["create"] == 0
 got = {(e["row"], e["column"]) for e in res["errors"]}
 expected = {(2, "사용자(이름)"), (3, "사용자(이름)"), (4, "상태"), (5, "시리얼"), (6, "자산번호"), (7, "자산번호"),
             (8, "사용자(이름)"), (9, "지급일"), (10, "부서"), (11, "법인코드"), (11, "유형코드"), (12, "취득금액"),
-            (13, "자산번호"), (14, "사용자(이름)"), (15, "사용자(이름)")}
+            (13, "자산번호"), (14, "사용자(이름)"), (15, "사용자(이름)"), (16, "유형코드"), (17, "대분류코드")}
 assert expected <= got, expected - got
+assert (17, "유형코드") not in got
 
 good = [
     {**base},                                                                            # 자동 번호
-    {**base, "자산번호": "DR-NB-0003", "시리얼": "A1"},                                  # 수동 번호 (자동보다 뒤 행)
+    {**base, "자산번호": "DR-IT-NB-0003", "시리얼": "A1"},                                  # 수동 번호 (자동보다 뒤 행)
     {**base, "상태": "사용중", "사용자(이름)": "홍길동", "지급일": 44987, "부서": "경영",  # 일련번호 지급일
      "취득일자": 43344, "취득금액": "1,250,000", "시리얼": "-"},
     {**base, "상태": "미확인", "부서": "경영전략기획실", "비고": "대장상 사용자: 김철수"},
     {**base, "상태": "사용중", "사용자(이름)": "김철수/기술연구소"},                      # 동명이인은 이름/부서로
     {**base, "상태": "사용중", "사용자(이름)": "박영희"},                                 # 같은 이름 퇴직자는 후보 제외
-    {"법인코드": "", "유형코드": "", "상태": ""},                                         # 빈 행: 무시
+    {"법인코드": "", "대분류코드": "", "유형코드": "", "상태": ""},                                         # 빈 행: 무시
 ]
 res = import_assets(ImportReq(rows=good), dry_run=True, user=admin)
 assert (res["create"], res["errors"], res["statuses"]) == (6, [], {"보관": 2, "사용중": 3, "미확인": 1}), res
@@ -93,7 +96,7 @@ with db() as conn:
 res = import_assets(ImportReq(rows=good), dry_run=False, user=admin)
 assert res["saved"] and (tmp / "backups" / res["backup"]).exists()
 # 수동 DR-NB-0003을 먼저 넣고 카운터를 올린 뒤 자동 번호 발급 → 0004부터, 충돌 없음
-assert sorted(res["ids"]) == [f"DR-NB-{n:04d}" for n in range(3, 9)], res["ids"]
+assert sorted(res["assetNos"]) == [f"DR-IT-NB-{n:04d}" for n in range(3, 9)], res["assetNos"]
 with db() as conn:
     a = dict(conn.execute("SELECT * FROM assets WHERE memberId = 2").fetchone())
     assert (a["purchaseDate"], a["purchaseCost"], a["serial"], a["departmentId"]) == ("2018-09", 1250000, None, 1)

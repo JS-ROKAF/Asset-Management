@@ -5,7 +5,7 @@ from datetime import date, timedelta
 from asset_ops import STATUSES, ambiguous_msg, create_asset, find_member, member_index
 
 COLUMNS = [
-    "자산번호", "구자산번호", "법인코드", "유형코드", "자산명", "모델명", "시리얼", "제조년월",
+    "자산번호", "구자산번호", "법인코드", "대분류코드", "유형코드", "자산명", "모델명", "시리얼", "제조년월",
     "CPU", "RAM", "저장장치", "OS", "취득일자", "취득금액", "구입처", "구매품의번호",
     "보증만료일", "부서", "위치", "상태", "사용자(이름)", "지급일", "비고",
 ]
@@ -92,10 +92,12 @@ def to_cost(v) -> int | None:
 def plan(conn, rows: list[dict]) -> tuple[list[dict], list[dict]]:
     """(저장할 자산 목록, 오류 목록[행·칸·사유]). DB는 읽기만 한다"""
     corps = {r["code"]: dict(r) for r in conn.execute("SELECT * FROM corporations")}
-    types = {r["code"]: dict(r) for r in conn.execute("SELECT * FROM asset_types")}
+    cats = {r["code"]: dict(r) for r in conn.execute("SELECT * FROM asset_categories")}
+    types = {(r["catCode"], r["code"]): dict(r) for r in conn.execute(
+        "SELECT t.*, g.code catCode FROM asset_types t JOIN asset_categories g ON g.id = t.categoryId")}
     depts = {r["name"]: dict(r) for r in conn.execute("SELECT * FROM departments")}
     members = member_index(conn, active_only=True)   # 퇴직자에게는 배정할 수 없으므로 재직자 중에서만 찾는다
-    db_ids = {r[0] for r in conn.execute("SELECT id FROM assets")}
+    db_nos = {r[0] for r in conn.execute("SELECT assetNo FROM assets")}
     db_serials = {r[0] for r in conn.execute("SELECT serial FROM assets WHERE serial IS NOT NULL")}
 
     items, errors, seen_id, seen_serial = [], [], {}, {}
@@ -121,21 +123,24 @@ def plan(conn, rows: list[dict]) -> tuple[list[dict], list[dict]]:
 
         fields = {f: _text(row.get(col)) or None for col, f in TEXT_FIELDS.items()}
 
-        corp_code, type_code = _text(row.get("법인코드")).upper(), _text(row.get("유형코드")).upper()
-        corp, typ = corps.get(corp_code), types.get(type_code)
-        for col, code, rec in (("법인코드", corp_code, corp), ("유형코드", type_code, typ)):
+        corp_code, cat_code, type_code = (_text(row.get(c)).upper() for c in ("법인코드", "대분류코드", "유형코드"))
+        corp, cat = corps.get(corp_code), cats.get(cat_code)
+        typ = types.get((cat_code, type_code)) if cat else None
+        for col, code, rec in (("법인코드", corp_code, corp), ("대분류코드", cat_code, cat), ("유형코드", type_code, typ)):
             if not code:
                 err(col, "필수 항목입니다.")
             elif not rec:
-                err(col, f"없는 코드입니다: {code}")
+                if col != "유형코드" or cat:   # 대분류가 틀리면 유형은 판단하지 않는다
+                    err(col, f"없는 코드입니다: {code}" + (f" ({cat_code} 대분류 기준)" if col == "유형코드" else ""))
             elif not rec["active"]:
                 err(col, f"사용하지 않는 코드입니다: {code}")
 
         manual = _text(row.get("자산번호")).upper() or None
+        prefix = f"{corp_code}-{cat_code}-{type_code}-"
         if manual and corp and typ:
-            if not re.fullmatch(rf"{corp_code}-{type_code}-\d{{4}}", manual):
-                err("자산번호", f"{corp_code}-{type_code}-0000 형식이어야 합니다: {manual}")
-            elif manual in db_ids:
+            if not re.fullmatch(re.escape(prefix) + r"\d{4}", manual):
+                err("자산번호", f"{prefix}0000 형식이어야 합니다: {manual}")
+            elif manual in db_nos:
                 err("자산번호", f"이미 등록된 자산번호입니다: {manual}")
             elif manual in seen_id:
                 err("자산번호", f"파일 안에서 중복입니다 ({seen_id[manual]}행).")
@@ -200,12 +205,13 @@ def plan(conn, rows: list[dict]) -> tuple[list[dict], list[dict]]:
             continue
         fields.update(corporationId=corp["id"], typeId=typ["id"], status=status,
                       memberId=member["id"] if member else None)
-        items.append({"row": line, "id": manual, "fields": fields, "issueDate": issue_date})
+        items.append({"row": line, "assetNo": manual, "fields": fields, "issueDate": issue_date})
     return items, errors
 
 
-def apply(conn, user, items: list[dict]) -> list[str]:
+def apply(conn, user, items: list[dict]) -> list[str]:   # 발급된 자산번호 목록
     """호출자 트랜잭션 안에서 저장. 수동 번호 행을 먼저 넣어 카운터를 올린 뒤 자동 번호를 발급 —
     자동 번호가 같은 파일의 뒤쪽 수동 번호와 겹치지 않게"""
-    ordered = sorted(items, key=lambda it: it["id"] is None)
-    return [create_asset(conn, user, it["fields"], it["id"], it["issueDate"], None, INTAKE_NOTE)["id"] for it in ordered]
+    ordered = sorted(items, key=lambda it: it["assetNo"] is None)
+    return [create_asset(conn, user, it["fields"], it["assetNo"], it["issueDate"], None, INTAKE_NOTE)["assetNo"]
+            for it in ordered]

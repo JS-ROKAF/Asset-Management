@@ -70,12 +70,12 @@ export default function AssetPublicDetail({ assetId }) {
   const sc = STATUS_STYLES[asset.status] || { background: "#F1F5F9", color: "#64748B" };
 
   const rows = [
-    ["자산번호",  asset.id],
+    ["자산번호",  asset.assetNo],
     ["구자산번호", asset.legacyNo],
     ["법인",      asset.corporationCode],
     ["모델명",    asset.model],
     ["시리얼",    asset.serial],
-    ["유형",      asset.typeName],
+    ["유형",      `${asset.categoryCode} · ${asset.typeName}`],
     ["부서",      asset.departmentName],
     ["위치",      asset.location],
     ["사용자",    asset.memberName],
@@ -91,7 +91,7 @@ export default function AssetPublicDetail({ assetId }) {
       <div style={styles.card}>
         <div style={styles.header}>
           <p style={styles.typeLabel}>{asset.typeName}</p>
-          <h1 style={styles.title}>{asset.name || asset.id}</h1>
+          <h1 style={styles.title}>{asset.name || asset.assetNo}</h1>
           <span style={{ ...styles.badge, ...sc }}>
             {asset.status || "상태 미지정"}
           </span>

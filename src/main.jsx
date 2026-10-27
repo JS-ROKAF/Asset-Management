@@ -12,7 +12,7 @@ function Root() {
     return () => window.removeEventListener('hashchange', onHashChange);
   }, []);
 
-  const match = hash.match(/^#\/assets\/(.+)$/);
+  const match = hash.match(/^#\/assets\/(\d+)$/);   // QR = 바뀌지 않는 내부 키 (자산번호 아님)
   if (match) return <AssetPublicDetail assetId={match[1]} />;
   return <App />;
 }

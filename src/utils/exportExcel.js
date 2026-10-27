@@ -85,7 +85,7 @@ function buildAssetSheet(assets) {
     const bg = i % 2 === 0 ? "FFFFFF" : "F8FAFC";
     const sBg = statusColor[a.status] || "FFFFFF";
     const sColor = statusTextColor[a.status] || "000000";
-    setCell(ws, `A${row}`, a.id, cellStyle(bg));
+    setCell(ws, `A${row}`, a.assetNo, cellStyle(bg));
     setCell(ws, `B${row}`, a.name, cellStyle(bg));
     setCell(ws, `C${row}`, a.type || "기타", cellStyle(bg));
     ws[`D${row}`] = { v: a.status, t: "s", s: { ...cellStyle(sBg), font: { bold: true, color: { rgb: sColor } }, alignment: { horizontal: "center", vertical: "center" } } };
@@ -210,7 +210,7 @@ function buildHistorySheet(history) {
     const typeBg = h.type === "배정" ? "DBEAFE" : "FEF3C7";
     const typeColor = h.type === "배정" ? "1D4ED8" : "92400E";
     ws[`A${row}`] = { v: h.type, t: "s", s: { fill: { fgColor: { rgb: typeBg } }, font: { bold: true, color: { rgb: typeColor } }, alignment: { horizontal: "center", vertical: "center" }, border: cellStyle().border } };
-    setCell(ws, `B${row}`, h.assetId, cellStyle(bg));
+    setCell(ws, `B${row}`, h.assetNo, cellStyle(bg));
     setCell(ws, `C${row}`, h.assetName, cellStyle(bg));
     setCell(ws, `D${row}`, h.from, cellStyle(bg));
     setCell(ws, `E${row}`, h.to, cellStyle(bg));
@@ -277,7 +277,7 @@ function buildSummarySheet(assets, members) {
     repairing.forEach((a, i) => {
       const row = repairRow + 2 + i;
       const bg = i % 2 === 0 ? "FFF7F7" : "FFFFFF";
-      setCell(ws, `A${row}`, a.id, cellStyle(bg));
+      setCell(ws, `A${row}`, a.assetNo, cellStyle(bg));
       setCell(ws, `B${row}`, a.name, cellStyle(bg));
       setCell(ws, `C${row}`, a.user, cellStyle(bg));
       setCell(ws, `D${row}`, a.date, cellStyle(bg));
@@ -295,7 +295,7 @@ function buildSummarySheet(assets, members) {
     unassigned.forEach((a, i) => {
       const row = unassignedRow + 2 + i;
       const bg = i % 2 === 0 ? "FFFBEB" : "FFFFFF";
-      setCell(ws, `A${row}`, a.id, cellStyle(bg));
+      setCell(ws, `A${row}`, a.assetNo, cellStyle(bg));
       setCell(ws, `B${row}`, a.name, cellStyle(bg));
       setCell(ws, `C${row}`, a.location, cellStyle(bg));
     });

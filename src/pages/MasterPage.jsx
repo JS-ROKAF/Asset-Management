@@ -1,35 +1,40 @@
 import React, { useState } from "react";
 import { api } from "../api";
-import { Btn, Modal, InputField, PageHeader } from "../components/common";
+import { Btn, Modal, InputField, SelectField, PageHeader } from "../components/common";
 import { C } from "../constants";
 
 // 탭별 설정: API 종류, 목록 칸, 입력 칸
 const TABS = {
   corporations: { label: "법인", columns: [["code", "코드"], ["name", "이름"]], empty: { code: "", name: "" } },
   departments: { label: "부서", columns: [["name", "이름"]], empty: { name: "" } },
-  types: { label: "유형", columns: [["code", "코드"], ["name", "이름"], ["hasSpecs", "사양 입력"]], empty: { code: "", name: "", hasSpecs: 0 } },
+  categories: { label: "대분류", columns: [["code", "코드"], ["name", "이름"]], empty: { code: "", name: "" } },
+  types: { label: "유형", columns: [["categoryCode", "대분류"], ["code", "코드"], ["name", "이름"], ["hasSpecs", "사양 입력"]], empty: { categoryId: "", code: "", name: "", hasSpecs: 0 } },
 };
 
 // ── 기준정보 (admin) — 삭제 없이 사용여부만 토글 ──
-export default function MasterPage({ corporations, departments, assetTypes, save }) {
+export default function MasterPage({ corporations, departments, assetCategories, assetTypes, save }) {
   const [tab, setTab] = useState("corporations");
   const [editing, setEditing] = useState(null);   // { id?: number, ...fields }
-  const rows = { corporations, departments, types: assetTypes }[tab];
+  const rows = { corporations, departments, categories: assetCategories, types: assetTypes }[tab];
   const { columns, empty } = TABS[tab];
 
   const submit = async () => {
     const { id, ...fields } = editing;
     if (!fields.name?.trim() || ("code" in fields && !fields.code?.trim())) return alert("코드와 이름은 필수입니다.");
+    if ("categoryId" in fields) {
+      if (!fields.categoryId) return alert("대분류를 선택해 주세요.");
+      fields.categoryId = Number(fields.categoryId);
+    }
     const ok = await save(() => id ? api.masters.update(tab, id, fields) : api.masters.create(tab, fields));
     if (ok) setEditing(null);
   };
 
   const toggleActive = (r) => save(() => api.masters.update(tab, r.id, { active: r.active ? 0 : 1 }));
-  const startEdit = (r) => setEditing({ id: r.id, ...Object.fromEntries(Object.keys(empty).map(k => [k, r[k]])) });
+  const startEdit = (r) => setEditing({ id: r.id, ...Object.fromEntries(Object.keys(empty).map(k => [k, k === "categoryId" ? String(r[k]) : r[k]])) });
 
   return (
     <main style={{ flex: 1, padding: "36px 40px", overflowY: "auto" }}>
-      <PageHeader title="기준정보" subtitle="법인·부서·유형을 관리하세요. 사용 중인 항목은 삭제 대신 사용 안 함으로 바꿉니다."
+      <PageHeader title="기준정보" subtitle="법인·부서·대분류·유형을 관리하세요. 사용 중인 항목은 삭제 대신 사용 안 함으로 바꿉니다."
         action={<Btn onClick={() => setEditing({ ...empty })}>+ {TABS[tab].label} 추가</Btn>} />
       <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
         {Object.entries(TABS).map(([key, t]) => (
@@ -73,6 +78,10 @@ export default function MasterPage({ corporations, departments, assetTypes, save
       {editing && (
         <Modal title={`${TABS[tab].label} ${editing.id ? "수정" : "추가"}`} onClose={() => setEditing(null)}>
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            {"categoryId" in editing && (
+              <SelectField label="대분류 * (사용 중이면 변경 불가)" value={editing.categoryId} onChange={v => setEditing({ ...editing, categoryId: v })}
+                options={[{ value: "", label: "선택해 주세요" }, ...assetCategories.map(g => ({ value: String(g.id), label: `${g.code} · ${g.name}` }))]} />
+            )}
             {"code" in editing && (
               <InputField label="코드 * (자산번호에 쓰임, 사용 중이면 변경 불가)" value={editing.code} onChange={v => setEditing({ ...editing, code: v.toUpperCase() })} />
             )}

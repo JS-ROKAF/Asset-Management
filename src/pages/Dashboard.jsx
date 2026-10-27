@@ -490,8 +490,8 @@ export default function Dashboard({ assets, members, history, departments, permi
           <div style={{ background: C.card, borderRadius: 12, padding: "16px 20px", flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
             <h3 style={{ margin: "0 0 10px", fontSize: 13, fontWeight: 700 }}>알림</h3>
             <div style={{ display: "flex", flexDirection: "column", gap: 6, flex: 1, overflowY: "auto" }}>
-              {expiredAssets.map(a => (<div key={a.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 10px", background: "#FEF2F2", borderRadius: 8 }}><span style={{ fontSize: 11, fontWeight: 700, color: C.danger, background: "#FEE2E2", padding: "2px 6px", borderRadius: 4 }}>만료</span><span style={{ fontSize: 12, flex: 1 }}>{a.id} {a.name}</span></div>))}
-              {warningAssets.map(a => (<div key={a.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 10px", background: "#FFF7ED", borderRadius: 8 }}><span style={{ fontSize: 11, fontWeight: 700, color: "#F97316", background: "#FFEDD5", padding: "2px 6px", borderRadius: 4 }}>임박</span><span style={{ fontSize: 12, flex: 1 }}>{a.id} {a.name}</span></div>))}
+              {expiredAssets.map(a => (<div key={a.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 10px", background: "#FEF2F2", borderRadius: 8 }}><span style={{ fontSize: 11, fontWeight: 700, color: C.danger, background: "#FEE2E2", padding: "2px 6px", borderRadius: 4 }}>만료</span><span style={{ fontSize: 12, flex: 1 }}>{a.assetNo} {a.name}</span></div>))}
+              {warningAssets.map(a => (<div key={a.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 10px", background: "#FFF7ED", borderRadius: 8 }}><span style={{ fontSize: 11, fontWeight: 700, color: "#F97316", background: "#FFEDD5", padding: "2px 6px", borderRadius: 4 }}>임박</span><span style={{ fontSize: 12, flex: 1 }}>{a.assetNo} {a.name}</span></div>))}
             </div>
           </div>
 

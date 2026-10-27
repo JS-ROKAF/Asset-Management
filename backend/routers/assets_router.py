@@ -16,7 +16,7 @@ DATE = r"^\d{4}-\d{2}-\d{2}$"
 
 class CreateReq(BaseModel):
     fields: dict[str, Any]
-    id: str | None = None          # 수동 입력 번호 (quantity=1일 때만)
+    assetNo: str | None = None     # 수동 입력 번호 (quantity=1일 때만)
     quantity: int = Field(1, ge=1, le=100)
     eventDate: str | None = Field(None, pattern=DATE)
     memo: str | None = None
@@ -31,7 +31,7 @@ class PatchReq(BaseModel):
 
 
 class BulkReq(BaseModel):
-    ids: list[str] = Field(min_length=1)
+    ids: list[int] = Field(min_length=1)
     fields: dict[str, Any]         # 배정 {memberId}, 반납 {memberId: null}, 상태 {status}, 이동 {departmentId, location}
     eventDate: str | None = Field(None, pattern=DATE)
     memo: str | None = None
@@ -44,13 +44,13 @@ class DisposeReq(BaseModel):
 
 
 @router.get("/{asset_id}")
-def get_asset(asset_id: str, user: dict = Depends(get_current_user)):
+def get_asset(asset_id: int, user: dict = Depends(get_current_user)):
     # QR 조회 화면용: 표시 이름까지 붙여서 반환
     with db() as conn:
         asset = load_asset(conn, asset_id)
         names = conn.execute(
-            """SELECT t.name typeName, c.code corporationCode, d.name departmentName, m.name memberName
-               FROM assets a JOIN asset_types t ON t.id = a.typeId JOIN corporations c ON c.id = a.corporationId
+            """SELECT t.name typeName, g.code categoryCode, c.code corporationCode, d.name departmentName, m.name memberName
+               FROM assets a JOIN asset_types t ON t.id = a.typeId JOIN asset_categories g ON g.id = t.categoryId JOIN corporations c ON c.id = a.corporationId
                LEFT JOIN departments d ON d.id = a.departmentId LEFT JOIN members m ON m.id = a.memberId
                WHERE a.id = ?""", (asset_id,)).fetchone()
         return {**asset, **dict(names)}
@@ -58,14 +58,14 @@ def get_asset(asset_id: str, user: dict = Depends(get_current_user)):
 
 @router.post("")
 def create(req: CreateReq, user: dict = Depends(require_not_viewer)):
-    if req.id and req.quantity > 1:
+    if req.assetNo and req.quantity > 1:
         raise HTTPException(400, "자산번호를 직접 입력할 때는 1개씩만 등록할 수 있습니다.")
     with db(write=True) as conn:
-        return [create_asset(conn, user, req.fields, req.id, req.eventDate, req.memo) for _ in range(req.quantity)]
+        return [create_asset(conn, user, req.fields, req.assetNo, req.eventDate, req.memo) for _ in range(req.quantity)]
 
 
 @router.patch("/{asset_id}")
-def update(asset_id: str, req: PatchReq, user: dict = Depends(require_not_viewer)):
+def update(asset_id: int, req: PatchReq, user: dict = Depends(require_not_viewer)):
     with db(write=True) as conn:
         asset = load_asset(conn, asset_id)
         if asset["updatedAt"] != req.updatedAt:
@@ -92,7 +92,7 @@ def import_assets(req: ImportReq, dry_run: bool = False, user: dict = Depends(re
         if dry_run or errors:
             return summary
         summary["backup"] = backup("before_asset_import").name
-        summary["ids"] = asset_import.apply(conn, user, items)
+        summary["assetNos"] = asset_import.apply(conn, user, items)
         summary["saved"] = True
         return summary
 
@@ -105,6 +105,6 @@ def bulk(req: BulkReq, user: dict = Depends(require_not_viewer)):
 
 
 @router.post("/{asset_id}/dispose")
-def dispose(asset_id: str, req: DisposeReq, user: dict = Depends(require_not_viewer)):
+def dispose(asset_id: int, req: DisposeReq, user: dict = Depends(require_not_viewer)):
     with db(write=True) as conn:
         return dispose_asset(conn, user, load_asset(conn, asset_id), req.method, req.reason, req.eventDate)

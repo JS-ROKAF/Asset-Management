@@ -4,7 +4,13 @@ export function enrich(data) {
   const byId = (rows) => new Map(rows.map(r => [r.id, r]));
   const corps = byId(data.corporations);
   const depts = byId(data.departments);
-  const types = byId(data.assetTypes);
+  const cats = byId(data.assetCategories);
+  // 유형 표시: 대분류가 다르면 같은 코드(ET 등)가 있을 수 있어 대분류를 붙인다
+  const assetTypes = data.assetTypes.map(t => {
+    const categoryCode = cats.get(t.categoryId)?.code ?? "-";
+    return { ...t, categoryCode, label: `${categoryCode}-${t.code} · ${t.name}` };
+  });
+  const types = byId(assetTypes);
   const deptName = (id) => depts.get(id)?.name ?? "-";
 
   const members = data.members.map(m => ({
@@ -21,6 +27,7 @@ export function enrich(data) {
     department: deptName(a.departmentId),
     type: types.get(a.typeId)?.name ?? "-",
     typeCode: types.get(a.typeId)?.code,
+    categoryCode: types.get(a.typeId)?.categoryCode,
     corporation: corps.get(a.corporationId)?.code ?? "-",
     date: a.createdAt,
   }));
@@ -28,7 +35,8 @@ export function enrich(data) {
 
   const history = data.history.map(h => ({
     ...h,
-    assetName: assetMap.get(h.assetId)?.name || h.assetId,
+    assetNo: assetMap.get(h.assetId)?.assetNo ?? "-",
+    assetName: assetMap.get(h.assetId)?.name || assetMap.get(h.assetId)?.assetNo || "-",
     from: memberName(h.fromMemberId),
     to: memberName(h.toMemberId),
     date: h.eventDate,
@@ -39,7 +47,8 @@ export function enrich(data) {
 
   const requests = data.requests.map(r => ({
     ...r,
-    assetName: assetMap.get(r.assetId)?.name || r.assetId,
+    assetNo: assetMap.get(r.assetId)?.assetNo ?? "-",
+    assetName: assetMap.get(r.assetId)?.name || assetMap.get(r.assetId)?.assetNo || "-",
     requesterName: memberName(r.requesterId),
     targetUser: memberName(r.targetMemberId ?? r.requesterId),
   }));
@@ -47,7 +56,8 @@ export function enrich(data) {
   return {
     corporations: data.corporations,
     departments: data.departments,
-    assetTypes: data.assetTypes,
+    assetCategories: data.assetCategories,
+    assetTypes,
     assets, members, history, requests,
   };
 }

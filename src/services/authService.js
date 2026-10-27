@@ -32,7 +32,7 @@ export const restoreSession = async (setSession) => {
 };
 
 export const EMPTY_DATA = enrich({
-  corporations: [], departments: [], assetTypes: [],
+  corporations: [], departments: [], assetCategories: [], assetTypes: [],
   assets: [], members: [], history: [], requests: [],
 });
 
